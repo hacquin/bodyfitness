@@ -15,6 +15,12 @@ import { getFirestore, doc, setDoc, onSnapshot, getDoc, initializeFirestore } fr
 import biozLogo from './BIOZ.png';
 import { DEMO_DATA } from './demoData';
 
+import video1 from './1.mp4';
+import video2 from './2.mp4';
+import video3 from './3.mp4';
+import video4 from './4.mp4';
+const ONBOARDING_VIDEOS = [video1, video2, video3, video4];
+
 // --- VERSIONING ---
 const APP_VERSION = "v2.35.0 (Stable Switch)";
 console.log(`[Bodycontrol] Démarrage de l'application ${APP_VERSION}`);
@@ -1647,6 +1653,64 @@ function StravaView({ stravaLogs, onSync, isSyncing, isDemo }) {
 }
 
 // --- LOGIN SCREEN ---
+function VideoOnboarding({ onFinish }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.load();
+      videoRef.current.play().catch(() => {});
+    }
+  }, [currentIndex]);
+
+  const handleNext = () => {
+    if (currentIndex < ONBOARDING_VIDEOS.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      onFinish();
+    }
+  };
+
+  const isLast = currentIndex === ONBOARDING_VIDEOS.length - 1;
+
+  return (
+    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center z-50">
+      <video
+        ref={videoRef}
+        src={ONBOARDING_VIDEOS[currentIndex]}
+        className="w-full h-full object-contain"
+        autoPlay
+        loop
+        muted
+        playsInline
+      />
+      <div className="absolute bottom-0 left-0 right-0 pb-10 px-6 flex flex-col items-center gap-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-20">
+        <div className="flex gap-2 mb-2">
+          {ONBOARDING_VIDEOS.map((_, i) => (
+            <div key={i} className={`w-2.5 h-2.5 rounded-full transition-all ${i === currentIndex ? 'bg-violet-400 scale-125' : 'bg-slate-600'}`} />
+          ))}
+        </div>
+        <button
+          onClick={handleNext}
+          className="w-full max-w-xs bg-violet-600 hover:bg-violet-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg active:scale-95 flex items-center justify-center gap-2"
+        >
+          {isLast ? 'Commencer' : 'Suivant'}
+          <ArrowRight size={18} />
+        </button>
+        {!isLast && (
+          <button
+            onClick={onFinish}
+            className="text-slate-400 hover:text-slate-300 text-sm transition-colors"
+          >
+            Passer
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LoginScreen({ onLogin, onDemo, version }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1730,6 +1794,7 @@ function App() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('bioz_onboarding_done'));
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2000);
@@ -2385,6 +2450,10 @@ function App() {
       <img src={new URL('./picto-transparent.png', import.meta.url).href} alt="BIOZ" className="w-24 h-24 md:w-32 md:h-32" />
     </div>
   );
+
+  if (!user && !isDemo && showOnboarding) {
+    return <VideoOnboarding onFinish={() => { localStorage.setItem('bioz_onboarding_done', '1'); setShowOnboarding(false); }} />;
+  }
 
   if (!user && !isDemo) {
     return <LoginScreen onLogin={handleLogin} onDemo={handleEnterDemo} version={APP_VERSION} />;

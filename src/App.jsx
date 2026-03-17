@@ -43,9 +43,7 @@ const STRAVA_CONFIG = {
 
 // --- HEVY CONFIGURATION ---
 const HEVY_CONFIG = {
-  apiKey: import.meta.env.VITE_HEVY_API_KEY,
   apiBase: "https://api.hevyapp.com/v1",
-  webhookDataUrl: "https://fitness.hacquin.net/hevy_data.json",
 };
 
 const LOCAL_PROXY = "/proxy.php?url=";
@@ -1438,7 +1436,9 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
 }
 
 // --- SETTINGS VIEW ---
-function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEnabled, handleStravaAuth, withingsNeedsReconnect, goals, setGoals, isDemo }) {
+function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEnabled, handleStravaAuth, withingsNeedsReconnect, hevyApiKey, onSaveHevyApiKey, goals, setGoals, isDemo }) {
+  const [hevyKeyInput, setHevyKeyInput] = useState(hevyApiKey || '');
+  const [hevyKeySaved, setHevyKeySaved] = useState(false);
   const updateGoal = (key, value) => {
     const num = parseFloat(value);
     if (!isNaN(num)) setGoals(prev => ({ ...prev, [key]: num }));
@@ -1475,18 +1475,34 @@ function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEna
                   </div>
                   <button onClick={handleStravaAuth} className={`px-3 py-1 rounded text-xs font-bold ${isStravaEnabled ? 'bg-green-500/20 text-green-400' : 'bg-[#fc4c02] text-white'}`}>{isStravaEnabled ? 'Actif' : 'Lier'}</button>
               </div>
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900/50 p-3 rounded-lg border border-slate-600/50 gap-3">
+              <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-600/50 space-y-3">
                   <div className="flex items-center gap-3">
                       <div className="bg-blue-500 text-white font-bold w-8 h-8 rounded-full flex items-center justify-center"><Dumbbell size={16}/></div>
                       <div>
                         <div className="font-bold text-slate-200">Hevy</div>
-                        <div className="text-xs text-slate-500">Webhook VPS + API historique</div>
+                        <div className="text-xs text-slate-500">{hevyApiKey ? 'Connecté via API' : 'Non connecté'}</div>
                       </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                      <span className={`px-3 py-1 rounded text-xs font-bold ${HEVY_CONFIG.apiKey !== 'VOTRE_CLE_API_HEVY_ICI' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                        {HEVY_CONFIG.apiKey !== 'VOTRE_CLE_API_HEVY_ICI' ? 'API configurée' : '⚠ Clé API manquante'}
-                      </span>
+                  <div className="space-y-2">
+                    <label className="text-xs text-slate-400">Clé API personnelle (depuis hevy.com/settings → Developer)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={hevyKeyInput}
+                        onChange={e => { setHevyKeyInput(e.target.value); setHevyKeySaved(false); }}
+                        placeholder="Collez votre clé API Hevy ici"
+                        disabled={isDemo}
+                        className={`flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm placeholder-slate-500 focus:border-blue-500 focus:outline-none ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      />
+                      <button
+                        onClick={() => { onSaveHevyApiKey(hevyKeyInput); setHevyKeySaved(true); setTimeout(() => setHevyKeySaved(false), 3000); }}
+                        disabled={isDemo || hevyKeyInput === hevyApiKey}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${hevyKeySaved ? 'bg-green-500/20 text-green-400' : 'bg-blue-600 text-white hover:bg-blue-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {hevyKeySaved ? '✓ Sauvé' : 'Sauver'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-500">Nécessite un abonnement Hevy Pro. Chaque utilisateur utilise sa propre clé.</p>
                   </div>
               </div>
           </div>
@@ -1741,6 +1757,7 @@ function App() {
   const [hevyError, setHevyError] = useState(null);           // Erreurs réelles uniquement (rouge)
   const [hevySyncStatus, setHevySyncStatus] = useState(null); // Message de succès (vert)
   const lastHevyFetch = useRef(null);                         // Timestamp du dernier fetch
+  const [hevyApiKey, setHevyApiKey] = useState('');            // Clé API Hevy personnelle (per-user)
 
   // WITHINGS STATE
   const [isSyncingWithings, setIsSyncingWithings] = useState(false);
@@ -1766,6 +1783,7 @@ function App() {
       setHealthLogs([]);
       setStravaLogs([]);
       setHevyWorkouts([]);
+      setHevyApiKey('');
       setIsWithingsEnabled(false);
       setIsStravaEnabled(false);
       setGoals({ startWeight: 106, targetWeight: 95, startFat: 26, targetFat: 15, startWaist: 107, targetWaist: 95 });
@@ -1774,6 +1792,22 @@ function App() {
     }
     prevUserUid.current = currentUid;
   }, [user]);
+
+  // Charger la clé API Hevy personnelle depuis Firestore
+  useEffect(() => {
+    if (!user || !db || isDemo) return;
+    const loadHevyKey = async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid, "integrations", "hevy"));
+        if (snap.exists()) {
+          setHevyApiKey(snap.data().apiKey || '');
+        }
+      } catch (e) {
+        console.warn("[Hevy] Erreur chargement clé API:", e.message);
+      }
+    };
+    loadHevyKey();
+  }, [user, isDemo]);
 
   // Auth - restauration de session automatique via localStorage
   useEffect(() => {
@@ -1824,38 +1858,31 @@ function App() {
     return { ...raw, id, start_time: startTime };
   };
 
+  // Sauvegarder la clé API Hevy personnelle dans Firestore
+  const saveHevyApiKey = async (key) => {
+    const trimmed = (key || '').trim();
+    setHevyApiKey(trimmed);
+    if (!user || !db) return;
+    try {
+      await setDoc(doc(db, "users", user.uid, "integrations", "hevy"), { apiKey: trimmed, timestamp: Date.now() });
+      console.log("[Hevy] Clé API sauvegardée dans Firestore");
+    } catch (e) {
+      console.error("[Hevy] Erreur sauvegarde clé API:", e.message);
+    }
+  };
+
   const fetchHevyWorkouts = async () => {
     setLoadingHevy(true);
     setHevyError(null);
     setHevySyncStatus(null);
 
     try {
-      // --- Étape 1 : récupérer les séances récentes via le JSON webhook (VPS) ---
-      let webhookWorkouts = [];
-      try {
-        const res = await fetch(`${HEVY_CONFIG.webhookDataUrl}?t=${Date.now()}`);
-        if (res.ok) {
-          const contentType = res.headers.get("content-type") || "";
-          if (contentType.includes("application/json")) {
-            const raw = await res.json();
-            if (Array.isArray(raw)) webhookWorkouts = raw;
-            console.log(`[Hevy webhook] ${webhookWorkouts.length} entrées brutes depuis le VPS`);
-            // Debug : afficher la structure de la première entrée pour diagnostic
-            if (webhookWorkouts.length > 0) {
-              console.log("[Hevy webhook] Structure 1ère entrée:", JSON.stringify(webhookWorkouts[0]).substring(0, 300));
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("[Hevy] Webhook JSON inaccessible:", e.message);
-      }
-
-      // --- Étape 2 : récupérer l'historique complet via l'API Hevy ---
+      // --- Récupérer l'historique via l'API Hevy avec la clé personnelle de l'utilisateur ---
       let apiWorkouts = [];
-      let apiConfigured = HEVY_CONFIG.apiKey && HEVY_CONFIG.apiKey.length > 20 && HEVY_CONFIG.apiKey !== "VOTRE_CLE_API_HEVY_ICI";
+      let apiConfigured = hevyApiKey && hevyApiKey.length > 20;
       let apiError = null;
 
-      console.log(`[Hevy API] Clé configurée: ${apiConfigured}, longueur: ${HEVY_CONFIG.apiKey?.length || 0}`);
+      console.log(`[Hevy API] Clé configurée: ${apiConfigured}, longueur: ${hevyApiKey?.length || 0}`);
 
       if (apiConfigured) {
         try {
@@ -1864,7 +1891,7 @@ function App() {
           while (hasMore && page <= 200) {
             const res = await fetch(
               `${HEVY_CONFIG.apiBase}/workouts?page=${page}&pageSize=10`,
-              { headers: { "api-key": HEVY_CONFIG.apiKey, "accept": "application/json" } }
+              { headers: { "api-key": hevyApiKey, "accept": "application/json" } }
             );
             if (!res.ok) {
               const errText = await res.text();
@@ -1891,41 +1918,27 @@ function App() {
           apiError = "Exception appel API Hevy : " + e.message;
         }
       } else {
-        console.warn("[Hevy API] Clé non configurée ou invalide — seul le webhook sera utilisé.");
+        console.warn("[Hevy API] Clé non configurée — allez dans Paramètres pour renseigner votre clé.");
       }
 
-      // --- Étape 3 : normaliser et fusionner les deux sources sans doublons ---
+      // --- Normaliser les données API ---
       const mergedMap = new Map();
-
-      // Priorité 1 : données API (complètes, normalisées)
       apiWorkouts.forEach(w => {
         const normalized = normalizeWorkout(w);
         if (normalized) mergedMap.set(normalized.id, normalized);
       });
 
-      // Priorité 2 : données webhook (pour séances très récentes)
-      webhookWorkouts.forEach(w => {
-        const normalized = normalizeWorkout(w);
-        if (!normalized) return;
-        if (!mergedMap.has(normalized.id)) {
-          mergedMap.set(normalized.id, normalized);
-        }
-      });
+      console.log(`[Hevy] ${mergedMap.size} séances depuis l'API`);
 
-      console.log(`[Hevy] ${mergedMap.size} séances uniques après merge API+webhook`);
-
-      // --- Étape 4 : merger avec le state Firebase existant ---
+      // --- Merger avec le state Firebase existant ---
       setHevyWorkouts(prevFirebase => {
         const finalMap = new Map();
-        // Base : données Firebase déjà en mémoire
         prevFirebase.forEach(w => {
           const normalized = normalizeWorkout(w);
           if (normalized) finalMap.set(normalized.id, normalized);
         });
-        // Écrasement/ajout avec les données fraîches
         mergedMap.forEach((w, id) => finalMap.set(id, w));
 
-        // Tri : les séances avec start_time d'abord, puis les autres
         const sorted = Array.from(finalMap.values()).sort((a, b) => {
           if (!a.start_time && !b.start_time) return 0;
           if (!a.start_time) return 1;
@@ -1940,18 +1953,13 @@ function App() {
       // Message de résultat
       const total = mergedMap.size;
       if (total > 0) {
-        // Succès : on affiche le résultat et on efface les erreurs non-bloquantes
-        const sourceLabel = apiConfigured && apiWorkouts.length > 0
-          ? `API (${apiWorkouts.length}) + webhook (${webhookWorkouts.length})`
-          : `webhook uniquement (${webhookWorkouts.length} entrées)`;
-        setHevySyncStatus(`${total} séances chargées — source: ${sourceLabel}`);
+        setHevySyncStatus(`${total} séances chargées depuis l'API Hevy`);
         if (!apiError) setHevyError(null);
-        else setHevyError(`⚠ API: ${apiError} — L'historique webhook est affiché.`);
+        else setHevyError(`⚠ ${apiError}`);
       } else {
-        // Aucune séance valide après filtrage des squelettes
         const hint = apiConfigured
           ? "Aucune séance trouvée. Vérifiez la console (F12) pour le détail."
-          : "Aucune séance trouvée. Renseignez votre clé API Hevy dans HEVY_CONFIG.apiKey pour charger l'historique.";
+          : "Renseignez votre clé API Hevy dans les Paramètres pour synchroniser vos séances.";
         if (apiError) setHevyError(apiError);
         else setHevySyncStatus(hint);
       }
@@ -2389,7 +2397,7 @@ function App() {
       case 'workout': return <HevyView hevyWorkouts={hevyWorkouts} loadingHevy={loadingHevy} fetchHevyWorkouts={demoFetchHevy} hevyError={hevyError} hevySyncStatus={hevySyncStatus} onDeleteWorkout={demoDeleteHevy} isDemo={isDemo} />;
       case 'health': return <HealthTracker user={user} db={db} healthLogs={healthLogs} setHealthLogs={demoSetHealthLogs} isSyncingWithings={isSyncingWithings} onWithingsSync={demoWithingsSync} goals={goals} isDemo={isDemo} />;
       case 'strava': return <StravaView stravaLogs={stravaLogs} onSync={demoStravaSync} isSyncing={isSyncingStrava} isDemo={isDemo} />;
-      case 'settings': return <SettingsView user={user} isWithingsEnabled={isDemo || isWithingsEnabled} handleWithingsAuth={isDemo ? demoNoOp : handleStartWithingsAuth} isStravaEnabled={isDemo || isStravaEnabled} handleStravaAuth={isDemo ? demoNoOp : handleStartStravaAuth} withingsNeedsReconnect={false} goals={goals} setGoals={demoSetGoals} isDemo={isDemo} />;
+      case 'settings': return <SettingsView user={user} isWithingsEnabled={isDemo || isWithingsEnabled} handleWithingsAuth={isDemo ? demoNoOp : handleStartWithingsAuth} isStravaEnabled={isDemo || isStravaEnabled} handleStravaAuth={isDemo ? demoNoOp : handleStartStravaAuth} withingsNeedsReconnect={false} hevyApiKey={hevyApiKey} onSaveHevyApiKey={isDemo ? demoNoOp : saveHevyApiKey} goals={goals} setGoals={demoSetGoals} isDemo={isDemo} />;
       default: return <div className="flex items-center justify-center h-64 text-slate-500">Chargement...</div>;
     }
   };

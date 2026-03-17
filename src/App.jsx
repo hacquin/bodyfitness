@@ -516,7 +516,7 @@ function HevyView({ hevyWorkouts, loadingHevy, hevyError, hevySyncStatus, fetchH
   );
 }
 
-function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings, onWithingsSync }) {
+function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings, onWithingsSync, goals }) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
@@ -530,9 +530,9 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [timeFrame, setTimeFrame] = useState('day');
   
-  const START_WEIGHT = 106; const TARGET_WEIGHT = 95;
-  const START_FAT = 26; const TARGET_FAT = 15;
-  const START_WAIST = 107; const TARGET_WAIST = 95;
+  const START_WEIGHT = goals.startWeight; const TARGET_WEIGHT = goals.targetWeight;
+  const START_FAT = goals.startFat; const TARGET_FAT = goals.targetFat;
+  const START_WAIST = goals.startWaist; const TARGET_WAIST = goals.targetWaist;
 
   const getLastKnownValue = (key) => {
       if (!healthLogs || healthLogs.length === 0) return null;
@@ -1428,7 +1428,11 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
 }
 
 // --- SETTINGS VIEW ---
-function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEnabled, handleStravaAuth, withingsNeedsReconnect, onWithingsSyncNow }) {
+function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEnabled, handleStravaAuth, withingsNeedsReconnect, goals, setGoals }) {
+  const updateGoal = (key, value) => {
+    const num = parseFloat(value);
+    if (!isNaN(num)) setGoals(prev => ({ ...prev, [key]: num }));
+  };
   return (
     <div className="animate-fade-in space-y-6">
        <div className="text-center text-slate-500 text-xs mb-6">Connecté en tant que {user.email || 'Anonyme'}</div>
@@ -1476,6 +1480,32 @@ function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEna
                   </div>
               </div>
           </div>
+       </section>
+
+       <section className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+          <h3 className="font-bold text-slate-200 mb-4 flex items-center gap-2"><Target size={18} className="text-violet-400"/> Objectifs</h3>
+          <div className="space-y-4">
+            {[
+              { label: 'Poids', unit: 'kg', startKey: 'startWeight', targetKey: 'targetWeight', color: 'violet' },
+              { label: 'Graisse', unit: '%', startKey: 'startFat', targetKey: 'targetFat', color: 'yellow' },
+              { label: 'Tour de taille', unit: 'cm', startKey: 'startWaist', targetKey: 'targetWaist', color: 'orange' },
+            ].map(({ label, unit, startKey, targetKey, color }) => (
+              <div key={label} className="bg-slate-900/50 p-3 rounded-lg border border-slate-600/50">
+                <div className={`text-sm font-bold text-${color}-400 mb-2`}>{label} ({unit})</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wider">Départ</label>
+                    <input type="number" value={goals[startKey]} onChange={e => updateGoal(startKey, e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wider">Objectif</label>
+                    <input type="number" value={goals[targetKey]} onChange={e => updateGoal(targetKey, e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm mt-1" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-slate-500 mt-3 text-center">Les modifications sont sauvegardées automatiquement</p>
        </section>
     </div>
   );
@@ -1676,6 +1706,13 @@ function App() {
   const [isWithingsEnabled, setIsWithingsEnabled] = useState(false);
   const [isStravaEnabled, setIsStravaEnabled] = useState(false); 
   
+  // OBJECTIFS (paramétrables depuis l'onglet Params)
+  const [goals, setGoals] = useState({
+    startWeight: 106, targetWeight: 95,
+    startFat: 26, targetFat: 15,
+    startWaist: 107, targetWaist: 95,
+  });
+
   // HEVY STATE
   const [hevyWorkouts, setHevyWorkouts] = useState([]);
   const [loadingHevy, setLoadingHevy] = useState(false);
@@ -2061,6 +2098,7 @@ function App() {
         setIsStravaEnabled(data.isStravaEnabled || false);
         setStravaLogs(data.stravaLogs || []);
         setHevyWorkouts(data.hevyWorkouts || []);
+        if (data.goals) setGoals(prev => ({ ...prev, ...data.goals }));
         isDataLoaded.current = true;
         setDataLoaded(true);
         setSyncStatus('idle');
@@ -2086,12 +2124,13 @@ function App() {
         const trimmedStravaLogs = (stravaLogs || []).slice(-150);
         const trimmedHevyWorkouts = (hevyWorkouts || []).slice(0, 50);
 
-        const safeData = sanitizeForFirestore({ 
-            healthLogs: trimmedHealthLogs, 
-            isWithingsEnabled, 
-            isStravaEnabled, 
+        const safeData = sanitizeForFirestore({
+            healthLogs: trimmedHealthLogs,
+            isWithingsEnabled,
+            isStravaEnabled,
             stravaLogs: trimmedStravaLogs,
-            hevyWorkouts: trimmedHevyWorkouts 
+            hevyWorkouts: trimmedHevyWorkouts,
+            goals
         });
         await setDoc(doc(db, "users", user.uid), safeData, { merge: true });
         setSyncStatus('saved'); 
@@ -2106,7 +2145,7 @@ function App() {
     };
     const timeoutId = setTimeout(saveData, 2000); // debounce 2s au lieu de 500ms
     return () => clearTimeout(timeoutId);
-  }, [healthLogs, user, isWithingsEnabled, isStravaEnabled, stravaLogs, hevyWorkouts]);
+  }, [healthLogs, user, isWithingsEnabled, isStravaEnabled, stravaLogs, hevyWorkouts, goals]);
 
   const handleLogin = async (email, password) => { 
     try {
@@ -2273,18 +2312,18 @@ function App() {
     switch(activeTab) {
       case 'dashboard': return dataLoaded ? <Dashboard healthLogs={healthLogs} stravaLogs={stravaLogs} /> : <div className="flex items-center justify-center h-64 text-slate-500">Chargement...</div>;
       case 'workout': return <HevyView hevyWorkouts={hevyWorkouts} loadingHevy={loadingHevy} fetchHevyWorkouts={fetchHevyWorkouts} hevyError={hevyError} hevySyncStatus={hevySyncStatus} onDeleteWorkout={handleDeleteHevyWorkout} />;
-      case 'health': return <HealthTracker user={user} db={db} healthLogs={healthLogs} setHealthLogs={setHealthLogs} isSyncingWithings={isSyncingWithings} onWithingsSync={handleWithingsSync} />;
+      case 'health': return <HealthTracker user={user} db={db} healthLogs={healthLogs} setHealthLogs={setHealthLogs} isSyncingWithings={isSyncingWithings} onWithingsSync={handleWithingsSync} goals={goals} />;
       case 'strava': return <StravaView stravaLogs={stravaLogs} onSync={handleStravaSync} isSyncing={isSyncingStrava} />;
-      case 'settings': return <SettingsView user={user} isWithingsEnabled={isWithingsEnabled} handleWithingsAuth={handleStartWithingsAuth} isStravaEnabled={isStravaEnabled} handleStravaAuth={handleStartStravaAuth} withingsNeedsReconnect={withingsNeedsReconnect} />;
+      case 'settings': return <SettingsView user={user} isWithingsEnabled={isWithingsEnabled} handleWithingsAuth={handleStartWithingsAuth} isStravaEnabled={isStravaEnabled} handleStravaAuth={handleStartStravaAuth} withingsNeedsReconnect={withingsNeedsReconnect} goals={goals} setGoals={setGoals} />;
       default: return <div className="flex items-center justify-center h-64 text-slate-500">Chargement...</div>;
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24">
-      <header className="bg-slate-800 border-b border-slate-700 p-4 shadow-md sticky top-0 z-30">
+      <header className="bg-slate-800 border-b border-slate-700 p-2 shadow-md sticky top-0 z-30">
         <div className="max-w-[98%] mx-auto flex justify-between items-center">
-          <img src={new URL('./BIOZ.png', import.meta.url).href} alt="Bodycontrol" className="h-8" />
+          <img src={new URL('./BIOZ.png', import.meta.url).href} alt="Bodycontrol" className="h-14" />
           <div className="flex items-center gap-3">
              <button onClick={() => setShowWaterModal(true)} className="bg-blue-600/20 text-blue-400 p-2 rounded-full hover:bg-blue-600/40 border border-blue-500/50 mr-2 flex items-center justify-center active:scale-95 transition-all shadow-lg shadow-blue-900/20"><Droplet size={20} fill="currentColor" className="opacity-80"/></button>
              <div className="text-xs">{syncStatus === 'syncing' && <CloudLightning className="text-yellow-400 animate-pulse" size={20} />}{syncStatus === 'saved' && <Cloud className="text-green-400" size={20} />}{syncStatus === 'error' && <AlertCircle className="text-red-500" size={20} />}{syncStatus === 'idle' && <Cloud className="text-slate-600" size={20} />}</div>

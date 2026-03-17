@@ -1794,7 +1794,7 @@ function App() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('bioz_onboarding_done'));
+  const [showOnboarding, setShowOnboarding] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2000);
@@ -2452,7 +2452,7 @@ function App() {
   );
 
   if (!user && !isDemo && showOnboarding) {
-    return <VideoOnboarding onFinish={() => { localStorage.setItem('bioz_onboarding_done', '1'); setShowOnboarding(false); }} />;
+    return <VideoOnboarding onFinish={() => setShowOnboarding(false)} />;
   }
 
   if (!user && !isDemo) {

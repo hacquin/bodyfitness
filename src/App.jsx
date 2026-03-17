@@ -12,6 +12,9 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore, doc, setDoc, onSnapshot, getDoc, initializeFirestore } from "firebase/firestore";
 
+import biozLogo from './BIOZ.png';
+import { DEMO_DATA } from './demoData';
+
 // --- VERSIONING ---
 const APP_VERSION = "v2.35.0 (Stable Switch)";
 console.log(`[Bodycontrol] Démarrage de l'application ${APP_VERSION}`);
@@ -283,7 +286,7 @@ function Dashboard({ healthLogs, stravaLogs }) {
 }
 
 // --- VUE HEVY ---
-function HevyView({ hevyWorkouts, loadingHevy, hevyError, hevySyncStatus, fetchHevyWorkouts, onDeleteWorkout }) {
+function HevyView({ hevyWorkouts, loadingHevy, hevyError, hevySyncStatus, fetchHevyWorkouts, onDeleteWorkout, isDemo }) {
   const [expandedCards, setExpandedCards] = useState({});
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [showAllRecords, setShowAllRecords] = useState(false);
@@ -373,7 +376,7 @@ function HevyView({ hevyWorkouts, loadingHevy, hevyError, hevySyncStatus, fetchH
     <div className="space-y-6 animate-fade-in pb-20">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2"><Dumbbell size={22} className="text-blue-500" /> Séances de musculation - Hevy</h2>
-        <button onClick={() => fetchHevyWorkouts()} disabled={loadingHevy} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg disabled:opacity-50 transition-colors">
+        <button onClick={() => fetchHevyWorkouts()} disabled={loadingHevy || isDemo} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg disabled:opacity-50 transition-colors">
             <RefreshCw size={15} className={loadingHevy ? "animate-spin" : ""}/>{loadingHevy ? 'Sync...' : 'Synchroniser'}
         </button>
       </div>
@@ -461,13 +464,13 @@ function HevyView({ hevyWorkouts, loadingHevy, hevyError, hevySyncStatus, fetchH
                     </div>
                     <div className="text-right shrink-0 flex flex-col items-end">
                         <div className="flex items-center gap-2">
-                            <button
+                            {!isDemo && <button
                               onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(cardId); }}
                               className="text-slate-600 hover:text-red-400 transition-colors p-1 rounded hover:bg-red-500/10"
                               title="Supprimer cette séance"
                             >
                               <Trash2 size={14} />
-                            </button>
+                            </button>}
                             <div className="text-xs text-slate-400">{new Date(workout.start_time).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</div>
                         </div>
                         <div className="text-xs text-slate-500">{new Date(workout.start_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
@@ -516,7 +519,7 @@ function HevyView({ hevyWorkouts, loadingHevy, hevyError, hevySyncStatus, fetchH
   );
 }
 
-function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings, onWithingsSync, goals }) {
+function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings, onWithingsSync, goals, isDemo }) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [weight, setWeight] = useState('');
   const [bodyFat, setBodyFat] = useState('');
@@ -567,6 +570,11 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
   const [aiDate, setAiDate] = useState(null);
 
   useEffect(() => {
+    if (isDemo) {
+      setAiBilan(DEMO_DATA.aiBilan.text);
+      setAiDate(DEMO_DATA.aiBilan.date);
+      return;
+    }
     if (!user || !db) return;
     const loadBilan = async () => {
       try {
@@ -578,7 +586,7 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
       } catch(e) { console.error('Erreur chargement bilan IA', e); }
     };
     loadBilan();
-  }, [user, db]);
+  }, [user, db, isDemo]);
 
   const generateAiBilan = async () => {
     setAiLoading(true);
@@ -762,7 +770,9 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
       <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-slate-200 flex items-center gap-2"><Plus size={18} className="text-violet-400"/> Nouvelle mesure</h3>
-          {isSyncingWithings ? (
+          {isDemo ? (
+            <span className="text-xs text-slate-500 italic">Lecture seule en démo</span>
+          ) : isSyncingWithings ? (
             <span className="flex items-center gap-2 text-xs text-slate-400"><RefreshCw size={14} className="animate-spin text-violet-400"/> Sync Withings...</span>
           ) : (
             <button onClick={() => onWithingsSync()} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-slate-600">
@@ -770,14 +780,14 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
             </button>
           )}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white" />
-            <input type="text" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Poids (kg)" className="bg-slate-900 border border-slate-600 rounded p-2 text-white" />
-            <input type="text" value={waist} onChange={e => setWaist(e.target.value)} placeholder="Tour de taille (cm)" className="bg-slate-900 border border-slate-600 rounded p-2 text-white border-orange-500/50" />
-            <input type="text" value={bodyFat} onChange={e => setBodyFat(e.target.value)} placeholder="Fat %" className="bg-slate-900 border border-slate-600 rounded p-2 text-white" />
-            <input type="text" value={muscleMass} onChange={e => setMuscleMass(e.target.value)} placeholder="Mus %" className="bg-slate-900 border border-slate-600 rounded p-2 text-white" />
-            <input type="text" value={hydration} onChange={e => setHydration(e.target.value)} placeholder="Eau %" className="bg-slate-900 border border-slate-600 rounded p-2 text-white" />
-            <button onClick={handleSave} className="col-span-2 md:col-span-3 w-full bg-violet-600 text-white font-bold p-2 rounded hover:bg-violet-700 transition-colors">Enregistrer</button>
+        <div className={`grid grid-cols-2 md:grid-cols-3 gap-4 ${isDemo ? 'opacity-50 pointer-events-none' : ''}`}>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white" disabled={isDemo} />
+            <input type="text" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Poids (kg)" className="bg-slate-900 border border-slate-600 rounded p-2 text-white" disabled={isDemo} />
+            <input type="text" value={waist} onChange={e => setWaist(e.target.value)} placeholder="Tour de taille (cm)" className="bg-slate-900 border border-slate-600 rounded p-2 text-white border-orange-500/50" disabled={isDemo} />
+            <input type="text" value={bodyFat} onChange={e => setBodyFat(e.target.value)} placeholder="Fat %" className="bg-slate-900 border border-slate-600 rounded p-2 text-white" disabled={isDemo} />
+            <input type="text" value={muscleMass} onChange={e => setMuscleMass(e.target.value)} placeholder="Mus %" className="bg-slate-900 border border-slate-600 rounded p-2 text-white" disabled={isDemo} />
+            <input type="text" value={hydration} onChange={e => setHydration(e.target.value)} placeholder="Eau %" className="bg-slate-900 border border-slate-600 rounded p-2 text-white" disabled={isDemo} />
+            <button onClick={handleSave} disabled={isDemo} className="col-span-2 md:col-span-3 w-full bg-violet-600 text-white font-bold p-2 rounded hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Enregistrer</button>
         </div>
       </div>
 
@@ -798,8 +808,8 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
             )}
           </div>
           <button
-            onClick={generateAiBilan}
-            disabled={aiLoading}
+            onClick={isDemo ? undefined : generateAiBilan}
+            disabled={aiLoading || isDemo}
             className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors shrink-0"
           >
             <RefreshCw size={13} className={aiLoading ? 'animate-spin' : ''} />
@@ -1419,7 +1429,7 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
                  <div className="text-white text-sm">
                     {formatDate(log.date)} {log.weight && ` - ${log.weight}kg`} {log.steps && ` - ${log.steps} pas`} {log.waist && ` - ${log.waist} cm`}
                  </div>
-                 <button onClick={() => deleteEntry(log.id)} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16} /></button>
+                 {!isDemo && <button onClick={() => deleteEntry(log.id)} className="text-slate-500 hover:text-red-500 p-2"><Trash2 size={16} /></button>}
              </div>
          ))}
       </div>
@@ -1428,14 +1438,14 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
 }
 
 // --- SETTINGS VIEW ---
-function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEnabled, handleStravaAuth, withingsNeedsReconnect, goals, setGoals }) {
+function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEnabled, handleStravaAuth, withingsNeedsReconnect, goals, setGoals, isDemo }) {
   const updateGoal = (key, value) => {
     const num = parseFloat(value);
     if (!isNaN(num)) setGoals(prev => ({ ...prev, [key]: num }));
   };
   return (
     <div className="animate-fade-in space-y-6">
-       <div className="text-center text-slate-500 text-xs mb-6">Connecté en tant que {user.email || 'Anonyme'}</div>
+       <div className="text-center text-slate-500 text-xs mb-6">Connecté en tant que {isDemo ? 'Visiteur Démo' : (user?.email || 'Anonyme')}</div>
        
        {/* FIX P3: Bannière reconnexion Withings */}
        {withingsNeedsReconnect && (
@@ -1495,11 +1505,11 @@ function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEna
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] text-slate-500 uppercase tracking-wider">Départ</label>
-                    <input type="number" value={goals[startKey]} onChange={e => updateGoal(startKey, e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm mt-1" />
+                    <input type="number" value={goals[startKey]} onChange={e => updateGoal(startKey, e.target.value)} disabled={isDemo} className={`w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm mt-1 ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`} />
                   </div>
                   <div>
                     <label className="text-[10px] text-slate-500 uppercase tracking-wider">Objectif</label>
-                    <input type="number" value={goals[targetKey]} onChange={e => updateGoal(targetKey, e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm mt-1" />
+                    <input type="number" value={goals[targetKey]} onChange={e => updateGoal(targetKey, e.target.value)} disabled={isDemo} className={`w-full bg-slate-800 border border-slate-600 rounded p-2 text-white text-sm mt-1 ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`} />
                   </div>
                 </div>
               </div>
@@ -1512,7 +1522,7 @@ function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEna
 }
 
 // --- STRAVA VIEW ---
-function StravaView({ stravaLogs, onSync, isSyncing }) {
+function StravaView({ stravaLogs, onSync, isSyncing, isDemo }) {
     const safeLogs = Array.isArray(stravaLogs) ? stravaLogs : [];
 
     const getActivityIcon = (act, className) => {
@@ -1577,7 +1587,7 @@ function StravaView({ stravaLogs, onSync, isSyncing }) {
         <div className="animate-fade-in space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2"><MapIcon size={22} className="text-[#fc4c02]" /> Activités Strava</h2>
-                <button onClick={() => onSync()} disabled={isSyncing} className="bg-[#fc4c02] hover:bg-[#e34402] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg disabled:opacity-50 transition-colors">
+                <button onClick={() => onSync()} disabled={isSyncing || isDemo} className="bg-[#fc4c02] hover:bg-[#e34402] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg disabled:opacity-50 transition-colors">
                     <RefreshCw size={15} className={isSyncing ? "animate-spin" : ""}/>{isSyncing ? 'Sync...' : 'Synchroniser'}
                 </button>
             </div>
@@ -1621,7 +1631,7 @@ function StravaView({ stravaLogs, onSync, isSyncing }) {
 }
 
 // --- LOGIN SCREEN ---
-function LoginScreen({ onLogin, version }) {
+function LoginScreen({ onLogin, onDemo, version }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -1643,10 +1653,9 @@ function LoginScreen({ onLogin, version }) {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
       <div className="mb-8 text-center">
-        <Activity className="h-16 w-16 text-violet-400 mx-auto mb-4" />
-        <h1 className="text-3xl font-bold text-white mb-2">Bodycontrol Program</h1>
-        <p className="text-slate-400">Suivez vos entraînements et votre santé dans le cloud.</p>
-        <div className="text-xs text-slate-600 mt-2 font-mono">Build: {version}</div>
+        <img src={biozLogo} alt="BIOZ" className="h-16 mx-auto mb-4" />
+        <p className="text-slate-400">Un briefing sport santé quotidien alimenté par toutes tes applications.</p>
+        <div className="text-xs text-slate-600 mt-2 font-mono">Version Bêta : 1.0</div>
       </div>
       <div className="w-full max-w-sm bg-slate-800 rounded-2xl border border-slate-700 p-6 shadow-2xl">
         <div className="space-y-4">
@@ -1689,6 +1698,12 @@ function LoginScreen({ onLogin, version }) {
           </button>
         </div>
       </div>
+      <button
+        onClick={onDemo}
+        className="mt-6 text-violet-400 hover:text-violet-300 text-sm font-medium underline underline-offset-4 transition-colors"
+      >
+        Essayer la démo
+      </button>
     </div>
   );
 }
@@ -1698,6 +1713,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2000);
@@ -1738,13 +1754,34 @@ function App() {
   const isRemoteUpdate = useRef(false);
   const isDataLoaded = useRef(false); 
 
+  // Reset state quand l'utilisateur change (évite fuite de données entre comptes)
+  const prevUserUid = useRef(null);
+  useEffect(() => {
+    const currentUid = user?.uid || null;
+    if (prevUserUid.current !== null && prevUserUid.current !== currentUid) {
+      // L'utilisateur a changé (logout ou switch) → reset complet du state
+      isDataLoaded.current = false;
+      isRemoteUpdate.current = false;
+      isWriting.current = false;
+      setHealthLogs([]);
+      setStravaLogs([]);
+      setHevyWorkouts([]);
+      setIsWithingsEnabled(false);
+      setIsStravaEnabled(false);
+      setGoals({ startWeight: 106, targetWeight: 95, startFat: 26, targetFat: 15, startWaist: 107, targetWaist: 95 });
+      setDataLoaded(false);
+      setSyncStatus('idle');
+    }
+    prevUserUid.current = currentUid;
+  }, [user]);
+
   // Auth - restauration de session automatique via localStorage
   useEffect(() => {
     if (!auth) { setLoadingAuth(false); return; }
     setPersistence(auth, browserLocalPersistence).catch(e => console.error("Persistence Error:", e));
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => { 
-      setUser(currentUser); 
-      setLoadingAuth(false); 
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, []);
@@ -1935,7 +1972,7 @@ function App() {
 
   // Auto-fetch au premier affichage de l'onglet workout, puis TTL 5 min
   useEffect(() => {
-    if (activeTab !== 'workout') return;
+    if (isDemo || activeTab !== 'workout') return;
     const FIVE_MINUTES = 5 * 60 * 1000;
     const now = Date.now();
     if (!lastHevyFetch.current || now - lastHevyFetch.current > FIVE_MINUTES) {
@@ -1977,8 +2014,8 @@ function App() {
             finally { setIsSyncingWithings(false); }
         }
     };
-    if (user) handleWithingsCallback();
-  }, [user]);
+    if (user && !isDemo) handleWithingsCallback();
+  }, [user, isDemo]);
 
   const handleStartStravaAuth = () => {
      window.location.href = `${STRAVA_CONFIG.authUrl}?client_id=${STRAVA_CONFIG.clientId}&response_type=code&redirect_uri=${encodeURIComponent(STRAVA_CONFIG.redirectUri)}&approval_prompt=force&scope=${STRAVA_CONFIG.scope}&state=${generateId()}`;
@@ -2010,8 +2047,8 @@ function App() {
             finally { setIsSyncingStrava(false); }
         }
     };
-    if (user && !isStravaEnabled) handleStravaCallback();
-  }, [user, isStravaEnabled]);
+    if (user && !isDemo && !isStravaEnabled) handleStravaCallback();
+  }, [user, isDemo, isStravaEnabled]);
 
   const handleStravaSync = async (forcedToken = null) => {
       if (!user) return;
@@ -2071,7 +2108,7 @@ function App() {
   // Auto-sync Strava au chargement (désactivé sur mobile — bouton manuel disponible)
   const stravaAutoSynced = useRef(false);
   useEffect(() => {
-    if (!user || !dataLoaded || stravaAutoSynced.current || isMobileDevice) return;
+    if (isDemo || !user || !dataLoaded || stravaAutoSynced.current || isMobileDevice) return;
     if (isStravaEnabled) {
       stravaAutoSynced.current = true;
       handleStravaSync();
@@ -2081,7 +2118,7 @@ function App() {
   // Auto-sync Withings au chargement (désactivé sur mobile — bouton manuel disponible)
   const withingsAutoSynced = useRef(false);
   useEffect(() => {
-    if (!user || !dataLoaded || withingsAutoSynced.current || isMobileDevice) return;
+    if (isDemo || !user || !dataLoaded || withingsAutoSynced.current || isMobileDevice) return;
     if (isWithingsEnabled) {
       withingsAutoSynced.current = true;
       handleWithingsSync();
@@ -2091,7 +2128,7 @@ function App() {
   // Sync Read (Firebase) - onSnapshot écoute les changements distants
   const isWriting = useRef(false); // Empêche onSnapshot de réagir à nos propres écritures
   useEffect(() => {
-    if (!user || !db) return;
+    if (isDemo || !user || !db) return;
     setSyncStatus('syncing');
     const unsubscribeSnapshot = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
       // Si c'est nous qui venons d'écrire, on ignore ce snapshot
@@ -2119,7 +2156,7 @@ function App() {
 
   // Sync Write (Firebase) - debounce 2s pour éviter les écritures en rafale
   useEffect(() => {
-    if (!user || !isDataLoaded.current || !db) return;
+    if (isDemo || !user || !isDataLoaded.current || !db) return;
     if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return; }
     setSyncStatus('syncing');
     const saveData = async () => {
@@ -2153,7 +2190,7 @@ function App() {
     return () => clearTimeout(timeoutId);
   }, [healthLogs, user, isWithingsEnabled, isStravaEnabled, stravaLogs, hevyWorkouts, goals]);
 
-  const handleLogin = async (email, password) => { 
+  const handleLogin = async (email, password) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
@@ -2166,6 +2203,26 @@ function App() {
       }
       throw new Error(message);
     }
+  };
+
+  const handleEnterDemo = () => {
+    setIsDemo(true);
+    setHealthLogs(DEMO_DATA.healthLogs);
+    setStravaLogs(DEMO_DATA.stravaLogs);
+    setHevyWorkouts(DEMO_DATA.hevyWorkouts);
+    setGoals(DEMO_DATA.goals);
+    setDataLoaded(true);
+    isDataLoaded.current = true;
+  };
+
+  const handleExitDemo = () => {
+    setIsDemo(false);
+    setHealthLogs([]);
+    setStravaLogs([]);
+    setHevyWorkouts([]);
+    setGoals({ startWeight: 106, targetWeight: 95, startFat: 26, targetFat: 15, startWaist: 107, targetWaist: 95 });
+    setDataLoaded(false);
+    isDataLoaded.current = false;
   };
 
   const handleAddWater = async (amount) => {
@@ -2314,31 +2371,49 @@ function App() {
     </div>
   );
 
-  if (!user) {
-    return <LoginScreen onLogin={handleLogin} version={APP_VERSION} />;
+  if (!user && !isDemo) {
+    return <LoginScreen onLogin={handleLogin} onDemo={handleEnterDemo} version={APP_VERSION} />;
   }
 
+  // En mode démo, on bloque toutes les modifications
+  const demoNoOp = () => {};
+  const demoSetHealthLogs = isDemo ? demoNoOp : setHealthLogs;
+  const demoSetGoals = isDemo ? demoNoOp : setGoals;
+  const demoFetchHevy = isDemo ? demoNoOp : fetchHevyWorkouts;
+  const demoDeleteHevy = isDemo ? demoNoOp : handleDeleteHevyWorkout;
+  const demoStravaSync = isDemo ? demoNoOp : handleStravaSync;
+  const demoWithingsSync = isDemo ? demoNoOp : handleWithingsSync;
   const renderContent = () => {
     switch(activeTab) {
       case 'dashboard': return dataLoaded ? <Dashboard healthLogs={healthLogs} stravaLogs={stravaLogs} /> : <div className="flex items-center justify-center h-64 text-slate-500">Chargement...</div>;
-      case 'workout': return <HevyView hevyWorkouts={hevyWorkouts} loadingHevy={loadingHevy} fetchHevyWorkouts={fetchHevyWorkouts} hevyError={hevyError} hevySyncStatus={hevySyncStatus} onDeleteWorkout={handleDeleteHevyWorkout} />;
-      case 'health': return <HealthTracker user={user} db={db} healthLogs={healthLogs} setHealthLogs={setHealthLogs} isSyncingWithings={isSyncingWithings} onWithingsSync={handleWithingsSync} goals={goals} />;
-      case 'strava': return <StravaView stravaLogs={stravaLogs} onSync={handleStravaSync} isSyncing={isSyncingStrava} />;
-      case 'settings': return <SettingsView user={user} isWithingsEnabled={isWithingsEnabled} handleWithingsAuth={handleStartWithingsAuth} isStravaEnabled={isStravaEnabled} handleStravaAuth={handleStartStravaAuth} withingsNeedsReconnect={withingsNeedsReconnect} goals={goals} setGoals={setGoals} />;
+      case 'workout': return <HevyView hevyWorkouts={hevyWorkouts} loadingHevy={loadingHevy} fetchHevyWorkouts={demoFetchHevy} hevyError={hevyError} hevySyncStatus={hevySyncStatus} onDeleteWorkout={demoDeleteHevy} isDemo={isDemo} />;
+      case 'health': return <HealthTracker user={user} db={db} healthLogs={healthLogs} setHealthLogs={demoSetHealthLogs} isSyncingWithings={isSyncingWithings} onWithingsSync={demoWithingsSync} goals={goals} isDemo={isDemo} />;
+      case 'strava': return <StravaView stravaLogs={stravaLogs} onSync={demoStravaSync} isSyncing={isSyncingStrava} isDemo={isDemo} />;
+      case 'settings': return <SettingsView user={user} isWithingsEnabled={isDemo || isWithingsEnabled} handleWithingsAuth={isDemo ? demoNoOp : handleStartWithingsAuth} isStravaEnabled={isDemo || isStravaEnabled} handleStravaAuth={isDemo ? demoNoOp : handleStartStravaAuth} withingsNeedsReconnect={false} goals={goals} setGoals={demoSetGoals} isDemo={isDemo} />;
       default: return <div className="flex items-center justify-center h-64 text-slate-500">Chargement...</div>;
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-24">
+      {isDemo && (
+        <div className="bg-violet-600 text-white text-center py-2 px-4 text-sm font-medium flex items-center justify-center gap-3 z-50 relative">
+          <span>Mode Démo — Les données affichées sont fictives et aucune modification n'est sauvegardée.</span>
+          <button onClick={handleExitDemo} className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-xs font-bold transition-colors">Quitter la démo</button>
+        </div>
+      )}
       <header className="bg-slate-800 border-b border-slate-700 p-2 shadow-md sticky top-0 z-30">
         <div className="max-w-[98%] mx-auto flex justify-between items-center">
           <img src={new URL('./BIOZ.png', import.meta.url).href} alt="Bodycontrol" className="h-11" />
           <div className="flex items-center gap-3">
-             <button onClick={() => setShowWaterModal(true)} className="bg-blue-600/20 text-blue-400 p-2 rounded-full hover:bg-blue-600/40 border border-blue-500/50 mr-2 flex items-center justify-center active:scale-95 transition-all shadow-lg shadow-blue-900/20"><Droplet size={20} fill="currentColor" className="opacity-80"/></button>
-             <div className="text-xs">{syncStatus === 'syncing' && <CloudLightning className="text-yellow-400 animate-pulse" size={20} />}{syncStatus === 'saved' && <Cloud className="text-green-400" size={20} />}{syncStatus === 'error' && <AlertCircle className="text-red-500" size={20} />}{syncStatus === 'idle' && <Cloud className="text-slate-600" size={20} />}</div>
-             <div className="hidden md:flex items-center gap-2 text-sm text-slate-400"><User size={16}/> {user.displayName || user.email || 'Anonyme'}</div>
-             <button onClick={() => signOut(auth)} className="text-slate-400 hover:text-red-400 transition-colors p-2 rounded-full hover:bg-slate-700"><LogOut size={20} /></button>
+             <button onClick={() => !isDemo && setShowWaterModal(true)} className={`bg-blue-600/20 text-blue-400 p-2 rounded-full hover:bg-blue-600/40 border border-blue-500/50 mr-2 flex items-center justify-center active:scale-95 transition-all shadow-lg shadow-blue-900/20 ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`}><Droplet size={20} fill="currentColor" className="opacity-80"/></button>
+             {!isDemo && <div className="text-xs">{syncStatus === 'syncing' && <CloudLightning className="text-yellow-400 animate-pulse" size={20} />}{syncStatus === 'saved' && <Cloud className="text-green-400" size={20} />}{syncStatus === 'error' && <AlertCircle className="text-red-500" size={20} />}{syncStatus === 'idle' && <Cloud className="text-slate-600" size={20} />}</div>}
+             <div className="hidden md:flex items-center gap-2 text-sm text-slate-400"><User size={16}/> {isDemo ? 'Visiteur Démo' : (user?.displayName || user?.email || 'Anonyme')}</div>
+             {isDemo ? (
+               <button onClick={handleExitDemo} className="text-slate-400 hover:text-red-400 transition-colors p-2 rounded-full hover:bg-slate-700"><LogOut size={20} /></button>
+             ) : (
+               <button onClick={() => signOut(auth)} className="text-slate-400 hover:text-red-400 transition-colors p-2 rounded-full hover:bg-slate-700"><LogOut size={20} /></button>
+             )}
           </div>
         </div>
       </header>

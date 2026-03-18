@@ -52,10 +52,38 @@ const STRAVA_CONFIG = {
   scope: "activity:read_all,activity:read"
 };
 
+// --- HUAWEI HEALTH KIT CONFIGURATION ---
+const HUAWEI_CONFIG = {
+  clientId: import.meta.env.VITE_HUAWEI_CLIENT_ID,
+  clientSecret: import.meta.env.VITE_HUAWEI_CLIENT_SECRET,
+  redirectUri: "https://fitness.hacquin.net",
+  authUrl: "https://oauth-login.cloud.huawei.com/oauth2/v3/authorize",
+  tokenUrl: "https://oauth-login.cloud.huawei.com/oauth2/v3/token",
+  apiBase: "https://health-api.cloud.huawei.com/healthkit/v1",
+  scope: "https://www.huawei.com/healthkit/bodyweight.read https://www.huawei.com/healthkit/bodyfat.read https://www.huawei.com/healthkit/heartrate.read https://www.huawei.com/healthkit/activity.read"
+};
+
 // --- HEVY CONFIGURATION ---
 const HEVY_CONFIG = {
   apiBase: "https://api.hevyapp.com/v1",
 };
+
+// --- DATA SOURCE PREFERENCES ---
+const DATA_TYPE_SOURCES = [
+  { key: 'weight', label: 'Poids', sources: ['withings', 'huawei'] },
+  { key: 'bodyFat', label: 'Body fat %', sources: ['withings', 'huawei'] },
+  { key: 'muscleMass', label: 'Masse musculaire', sources: ['withings', 'huawei'] },
+  { key: 'hydration', label: 'Hydratation', sources: ['withings', 'huawei'] },
+  { key: 'restingHR', label: 'FC repos', sources: ['withings', 'huawei', 'strava'] },
+  { key: 'systolic', label: 'Tension systolique', sources: ['withings'] },
+  { key: 'diastolic', label: 'Tension diastolique', sources: ['withings'] },
+  { key: 'pwv', label: 'PWV', sources: ['withings'] },
+  { key: 'visceralFat', label: 'Graisse viscérale', sources: ['withings', 'huawei'] },
+  { key: 'bmr', label: 'BMR', sources: ['withings', 'huawei'] },
+  { key: 'vascularAge', label: 'Âge vasculaire', sources: ['withings'] },
+  { key: 'steps', label: 'Pas', sources: ['withings', 'huawei', 'strava'] },
+  { key: 'distance', label: 'Distance', sources: ['withings', 'huawei', 'strava'] },
+];
 
 const LOCAL_PROXY = "/proxy.php?url=";
 const PUBLIC_PROXY = "https://corsproxy.io/?";
@@ -1447,7 +1475,7 @@ function HealthTracker({ user, db, healthLogs, setHealthLogs, isSyncingWithings,
 }
 
 // --- SETTINGS VIEW ---
-function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEnabled, handleStravaAuth, withingsNeedsReconnect, hevyApiKey, onSaveHevyApiKey, goals, setGoals, isDemo }) {
+function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEnabled, handleStravaAuth, isHuaweiEnabled, handleHuaweiAuth, huaweiNeedsReconnect, withingsNeedsReconnect, hevyApiKey, onSaveHevyApiKey, goals, setGoals, dataSourcePrefs, setDataSourcePrefs, connectedSources, isDemo }) {
   const [hevyKeyInput, setHevyKeyInput] = useState(hevyApiKey || '');
   const [hevyKeySaved, setHevyKeySaved] = useState(false);
   const updateGoal = (key, value) => {
@@ -1486,6 +1514,13 @@ function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEna
                   </div>
                   <button onClick={handleStravaAuth} className={`px-3 py-1 rounded text-xs font-bold ${isStravaEnabled ? 'bg-green-500/20 text-green-400' : 'bg-[#fc4c02] text-white'}`}>{isStravaEnabled ? 'Actif' : 'Lier'}</button>
               </div>
+              <div className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg border border-slate-600/50">
+                  <div className="flex items-center gap-3">
+                      <div className="bg-[#CF0A2C] text-white font-bold w-8 h-8 rounded-full flex items-center justify-center">H</div>
+                      <div><div className="font-bold text-slate-200">Huawei Health</div><div className={`text-xs ${huaweiNeedsReconnect ? 'text-orange-400' : 'text-slate-500'}`}>{huaweiNeedsReconnect ? '⚠ Token expiré' : isHuaweiEnabled ? 'Connecté' : 'Non connecté'}</div></div>
+                  </div>
+                  <button onClick={handleHuaweiAuth} className={`px-3 py-1 rounded text-xs font-bold ${huaweiNeedsReconnect ? 'bg-orange-500 text-white' : isHuaweiEnabled ? 'bg-green-500/20 text-green-400' : 'bg-[#CF0A2C] text-white'}`}>{huaweiNeedsReconnect ? 'Reconnecter' : isHuaweiEnabled ? 'Actif' : 'Lier'}</button>
+              </div>
               <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-600/50 space-y-3">
                   <div className="flex items-center gap-3">
                       <div className="bg-blue-500 text-white font-bold w-8 h-8 rounded-full flex items-center justify-center"><Dumbbell size={16}/></div>
@@ -1518,6 +1553,33 @@ function SettingsView({ user, isWithingsEnabled, handleWithingsAuth, isStravaEna
               </div>
           </div>
        </section>
+
+       {connectedSources.length >= 2 && (
+       <section className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+          <h3 className="font-bold text-slate-200 mb-4 flex items-center gap-2"><Filter size={18} className="text-emerald-400"/> Sources de données</h3>
+          <p className="text-xs text-slate-500 mb-3">Choisissez la source pour chaque type de donnée.</p>
+          <div className="space-y-2">
+            {DATA_TYPE_SOURCES.map(({ key, label, sources }) => {
+              const available = sources.filter(s => connectedSources.includes(s));
+              if (available.length < 2) return null;
+              const current = dataSourcePrefs[key] || available[0];
+              return (
+                <div key={key} className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg border border-slate-600/50">
+                  <span className="text-sm text-slate-300">{label}</span>
+                  <div className="flex gap-1">
+                    {available.map(src => (
+                      <button key={src} onClick={() => !isDemo && setDataSourcePrefs(p => ({...p, [key]: src}))}
+                        className={`px-2 py-1 rounded text-xs font-bold capitalize ${current === src ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
+                        {src}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+       </section>
+       )}
 
        <section className="bg-slate-800 p-4 rounded-xl border border-slate-700">
           <h3 className="font-bold text-slate-200 mb-4 flex items-center gap-2"><Target size={18} className="text-violet-400"/> Objectifs</h3>
@@ -1851,9 +1913,25 @@ function App() {
   const [withingsNeedsReconnect, setWithingsNeedsReconnect] = useState(false);
 
   // STRAVA STATE
-  const [stravaLogs, setStravaLogs] = useState([]); 
+  const [stravaLogs, setStravaLogs] = useState([]);
   const [isSyncingStrava, setIsSyncingStrava] = useState(false);
   const [stravaNextSync, setStravaNextSync] = useState(null); // FIX P3: timestamp du prochain auto-sync
+
+  // HUAWEI STATE
+  const [isHuaweiEnabled, setIsHuaweiEnabled] = useState(false);
+  const [isSyncingHuawei, setIsSyncingHuawei] = useState(false);
+  const [huaweiNeedsReconnect, setHuaweiNeedsReconnect] = useState(false);
+
+  // DATA SOURCE PREFERENCES
+  const [dataSourcePrefs, setDataSourcePrefs] = useState({});
+
+  const connectedSources = useMemo(() => {
+    const s = [];
+    if (isWithingsEnabled) s.push('withings');
+    if (isHuaweiEnabled) s.push('huawei');
+    if (isStravaEnabled) s.push('strava');
+    return s;
+  }, [isWithingsEnabled, isHuaweiEnabled, isStravaEnabled]);
 
   const isRemoteUpdate = useRef(false);
   const isDataLoaded = useRef(false); 
@@ -1873,6 +1951,9 @@ function App() {
       setHevyApiKey('');
       setIsWithingsEnabled(false);
       setIsStravaEnabled(false);
+      setIsHuaweiEnabled(false);
+      setHuaweiNeedsReconnect(false);
+      setDataSourcePrefs({});
       setGoals({ startWeight: 106, targetWeight: 95, startFat: 26, targetFat: 15, startWaist: 107, targetWaist: 95 });
       setDataLoaded(false);
       setSyncStatus('idle');
@@ -2115,6 +2196,10 @@ function App() {
   const handleStartStravaAuth = () => {
      window.location.href = `${STRAVA_CONFIG.authUrl}?client_id=${STRAVA_CONFIG.clientId}&response_type=code&redirect_uri=${encodeURIComponent(STRAVA_CONFIG.redirectUri)}&approval_prompt=force&scope=${STRAVA_CONFIG.scope}&state=${generateId()}`;
   };
+
+  const handleStartHuaweiAuth = () => {
+     window.location.href = `${HUAWEI_CONFIG.authUrl}?response_type=code&client_id=${HUAWEI_CONFIG.clientId}&state=huawei_${generateId()}&scope=${encodeURIComponent(HUAWEI_CONFIG.scope)}&redirect_uri=${encodeURIComponent(HUAWEI_CONFIG.redirectUri)}&access_type=offline`;
+  };
   
   const handleStartWithingsAuth = () => {
      window.location.href = `${WITHINGS_CONFIG.authUrl}?response_type=code&client_id=${WITHINGS_CONFIG.clientId}&state=${generateId()}&scope=${WITHINGS_CONFIG.scope}&redirect_uri=${encodeURIComponent(WITHINGS_CONFIG.redirectUri)}`;
@@ -2240,10 +2325,12 @@ function App() {
         setHealthLogs(data.healthLogs || []);
         setIsWithingsEnabled(data.isWithingsEnabled || false);
         setIsStravaEnabled(data.isStravaEnabled || false);
+        setIsHuaweiEnabled(data.isHuaweiEnabled || false);
         setStravaLogs(data.stravaLogs || []);
         // Ne charger les workouts Hevy que si l'utilisateur a sa propre clé API
         setHevyWorkouts(userHasHevyKey ? (data.hevyWorkouts || []) : []);
         if (data.goals) setGoals(prev => ({ ...prev, ...data.goals }));
+        if (data.dataSourcePrefs) setDataSourcePrefs(data.dataSourcePrefs);
         isDataLoaded.current = true;
         setDataLoaded(true);
         setSyncStatus('idle');
@@ -2273,6 +2360,8 @@ function App() {
             healthLogs: trimmedHealthLogs,
             isWithingsEnabled,
             isStravaEnabled,
+            isHuaweiEnabled,
+            dataSourcePrefs,
             stravaLogs: trimmedStravaLogs,
             hevyWorkouts: trimmedHevyWorkouts,
             goals
@@ -2290,7 +2379,7 @@ function App() {
     };
     const timeoutId = setTimeout(saveData, 2000); // debounce 2s au lieu de 500ms
     return () => clearTimeout(timeoutId);
-  }, [healthLogs, user, isWithingsEnabled, isStravaEnabled, stravaLogs, hevyWorkouts, goals]);
+  }, [healthLogs, user, isWithingsEnabled, isStravaEnabled, isHuaweiEnabled, dataSourcePrefs, stravaLogs, hevyWorkouts, goals]);
 
   const handleLogin = async (email, password) => {
     try {
@@ -2495,7 +2584,7 @@ function App() {
       case 'workout': return <HevyView hevyWorkouts={hevyWorkouts} loadingHevy={loadingHevy} fetchHevyWorkouts={demoFetchHevy} hevyError={hevyError} hevySyncStatus={hevySyncStatus} onDeleteWorkout={demoDeleteHevy} isDemo={isDemo} />;
       case 'health': return <HealthTracker user={user} db={db} healthLogs={healthLogs} setHealthLogs={demoSetHealthLogs} isSyncingWithings={isSyncingWithings} onWithingsSync={demoWithingsSync} goals={goals} isDemo={isDemo} />;
       case 'strava': return <StravaView stravaLogs={stravaLogs} onSync={demoStravaSync} isSyncing={isSyncingStrava} isDemo={isDemo} />;
-      case 'settings': return <SettingsView user={user} isWithingsEnabled={isDemo || isWithingsEnabled} handleWithingsAuth={isDemo ? demoNoOp : handleStartWithingsAuth} isStravaEnabled={isDemo || isStravaEnabled} handleStravaAuth={isDemo ? demoNoOp : handleStartStravaAuth} withingsNeedsReconnect={false} hevyApiKey={hevyApiKey} onSaveHevyApiKey={isDemo ? demoNoOp : saveHevyApiKey} goals={goals} setGoals={demoSetGoals} isDemo={isDemo} />;
+      case 'settings': return <SettingsView user={user} isWithingsEnabled={isDemo || isWithingsEnabled} handleWithingsAuth={isDemo ? demoNoOp : handleStartWithingsAuth} isStravaEnabled={isDemo || isStravaEnabled} handleStravaAuth={isDemo ? demoNoOp : handleStartStravaAuth} isHuaweiEnabled={isDemo || isHuaweiEnabled} handleHuaweiAuth={isDemo ? demoNoOp : handleStartHuaweiAuth} huaweiNeedsReconnect={huaweiNeedsReconnect} withingsNeedsReconnect={false} hevyApiKey={hevyApiKey} onSaveHevyApiKey={isDemo ? demoNoOp : saveHevyApiKey} goals={goals} setGoals={demoSetGoals} dataSourcePrefs={dataSourcePrefs} setDataSourcePrefs={setDataSourcePrefs} connectedSources={connectedSources} isDemo={isDemo} />;
       default: return <div className="flex items-center justify-center h-64 text-slate-500">Chargement...</div>;
     }
   };

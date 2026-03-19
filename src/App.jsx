@@ -150,6 +150,35 @@ function Dashboard({ healthLogs, stravaLogs }) {
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [timeFrame, setTimeFrame] = useState('day');
+  const [showCardFilter, setShowCardFilter] = useState(false);
+  const [hiddenCards, setHiddenCards] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('bioz_hiddenCards') || '[]'); } catch { return []; }
+  });
+  const toggleCard = (cardId) => {
+    setHiddenCards(prev => {
+      const next = prev.includes(cardId) ? prev.filter(c => c !== cardId) : [...prev, cardId];
+      localStorage.setItem('bioz_hiddenCards', JSON.stringify(next));
+      return next;
+    });
+  };
+  const isCardVisible = (cardId) => !hiddenCards.includes(cardId);
+
+  const DASHBOARD_CARDS = [
+    { id: 'frequency', label: "Fréquence d'entraînement" },
+    { id: 'volume', label: "Volume d'entraînement" },
+    { id: 'repartition', label: 'Répartition' },
+    { id: 'steps', label: 'Pas par jour' },
+    { id: 'cycling_dist', label: 'Cyclisme — Distance' },
+    { id: 'running_dist', label: 'Running — Distance' },
+    { id: 'endurance_hr', label: 'FC moy. endurance' },
+    { id: 'cycling_dur', label: 'Cyclisme — Durée' },
+    { id: 'running_dur', label: 'Running — Durée' },
+    { id: 'cycling_speed', label: 'Cyclisme — Vit. moy.' },
+    { id: 'running_pace', label: 'Running — Allure moy.' },
+    { id: 'rowing_dist', label: 'Aviron — Distance' },
+    { id: 'rowing_dur', label: 'Aviron — Durée' },
+    { id: 'rowing_hr', label: 'Aviron — FC moy.' },
+  ];
 
   // FIX PERF: utilisation de useMemo pour éviter le crash CPU sur mobile
   const safeStravaLogs = useMemo(() => Array.isArray(stravaLogs) ? stravaLogs : [], [stravaLogs]);
@@ -268,6 +297,10 @@ function Dashboard({ healthLogs, stravaLogs }) {
     acc.duration = (acc.duration || 0) + ((log.moving_time || 0) / 60);
   }, { duration: 0 }).map(d => ({ ...d, duration: Math.round(d.duration) || null })), [rowingMapped, timeFrame, startDate, endDate]);
 
+  const rowingHRData = useMemo(() => aggregateData(rowingMapped, (acc, log) => {
+    if (log.average_heartrate) { acc._hrs = acc._hrs || []; acc._hrs.push(log.average_heartrate); }
+  }, {}).map(d => ({ ...d, hr: d._hrs && d._hrs.length > 0 ? Math.round(d._hrs.reduce((a, b) => a + b, 0) / d._hrs.length) : null })), [rowingMapped, timeFrame, startDate, endDate]);
+
   const enduranceHRData = useMemo(() => aggregateData(enduranceMapped, (acc, log) => {
     if (log.average_heartrate) { acc._hrs = acc._hrs || []; acc._hrs.push(log.average_heartrate); }
   }, {}).map(d => ({ ...d, hr: d._hrs && d._hrs.length > 0 ? Math.round(d._hrs.reduce((a, b) => a + b, 0) / d._hrs.length) : null })), [enduranceMapped, timeFrame, startDate, endDate]);
@@ -285,9 +318,22 @@ function Dashboard({ healthLogs, stravaLogs }) {
           <div className="flex items-center gap-1 bg-slate-900/50 p-2 rounded border border-slate-600"><Filter size={14} className="text-slate-400 shrink-0" /><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-transparent text-slate-200 focus:outline-none w-full text-xs" /></div>
           <div className="flex items-center gap-1 bg-slate-900/50 p-2 rounded border border-slate-600"><span className="text-slate-500 text-xs px-1">à</span><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent text-slate-200 focus:outline-none w-full text-xs" /></div>
         </div>
+        <button onClick={() => setShowCardFilter(p => !p)} className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showCardFilter ? 'bg-violet-600/20 border-violet-500/50 text-violet-300' : 'bg-slate-900/50 border-slate-600 text-slate-400 hover:text-slate-200'}`}>
+          <Settings size={14} /> Afficher / masquer des cartes {hiddenCards.length > 0 && <span className="bg-violet-500 text-white rounded-full px-1.5 text-[10px]">{hiddenCards.length}</span>}
+        </button>
+        {showCardFilter && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {DASHBOARD_CARDS.map(card => (
+              <button key={card.id} onClick={() => toggleCard(card.id)}
+                className={`text-left px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${isCardVisible(card.id) ? 'bg-slate-700/50 border-slate-600 text-slate-200' : 'bg-slate-900/80 border-slate-700 text-slate-500 line-through'}`}>
+                {isCardVisible(card.id) ? '✓' : '✕'} {card.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('frequency') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
             <Calendar size={16} className="text-cyan-400"/> Fréquence d'entraînement
         </h3>
@@ -305,9 +351,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
                 </BarChart>
             </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('volume') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
             <Activity size={16} className="text-[#fc4c02]"/> Volume d'entraînement (mn)
         </h3>
@@ -325,9 +371,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
                 </BarChart>
             </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('repartition') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
             <PieChart size={16} className="text-violet-400"/> Répartition
         </h3>
@@ -345,12 +391,12 @@ function Dashboard({ healthLogs, stravaLogs }) {
                     </PieChart>
                 </ResponsiveContainer>
             ) : (
-                <div className="text-slate-500 text-sm">Aucune donnée Strava sur cette période.</div>
+                <div className="text-slate-500 text-sm">Aucune donnée sur cette période.</div>
             )}
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg md:col-span-2 xl:col-span-1">
+      {isCardVisible('steps') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg md:col-span-2 xl:col-span-1">
           <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-emerald-400"/> Pas par jour</h3>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
@@ -364,10 +410,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
-      </div>
+      </div>}
 
-      {/* --- CARTES ENDURANCE --- */}
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('cycling_dist') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Bike size={16} className="text-blue-400"/> Cyclisme — Distance (km)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -381,9 +426,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('running_dist') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-orange-400"/> Running — Distance (km)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -397,9 +442,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('endurance_hr') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Heart size={16} className="text-red-400"/> FC moy. endurance (bpm)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -413,9 +458,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('cycling_dur') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-blue-400"/> Cyclisme — Durée (min)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -429,9 +474,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('running_dur') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-orange-400"/> Running — Durée (min)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -445,9 +490,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('cycling_speed') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Bike size={16} className="text-blue-400"/> Cyclisme — Vit. moy. (km/h)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -461,9 +506,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('running_pace') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-orange-400"/> Running — Allure moy. (min/km)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -477,9 +522,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('rowing_dist') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Waves size={16} className="text-cyan-400"/> Aviron — Distance (km)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -493,9 +538,9 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
 
-      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+      {isCardVisible('rowing_dur') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
         <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-cyan-400"/> Aviron — Durée (min)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
@@ -509,7 +554,23 @@ function Dashboard({ healthLogs, stravaLogs }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </div>}
+
+      {isCardVisible('rowing_hr') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Heart size={16} className="text-cyan-400"/> Aviron — FC moy. (bpm)</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={rowingHRData}>
+              <defs><linearGradient id="rowHRGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={0.6}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
+              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} />
+              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} bpm`, 'FC moy.']} />
+              <Area type="monotone" dataKey="hr" stroke="#06b6d4" fill="url(#rowHRGrad)" strokeWidth={2} name="FC moy. (bpm)" dot={false} connectNulls />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>}
     </div>
   );
 }

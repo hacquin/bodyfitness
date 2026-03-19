@@ -154,7 +154,7 @@ function Dashboard({ healthLogs, stravaLogs }) {
   const [hiddenCards, setHiddenCards] = useState(() => {
     try { return JSON.parse(localStorage.getItem('bioz_hiddenCards') || '[]'); } catch { return []; }
   });
-  const toggleCard = (cardId) => {
+  const toggleCardVisibility = (cardId) => {
     setHiddenCards(prev => {
       const next = prev.includes(cardId) ? prev.filter(c => c !== cardId) : [...prev, cardId];
       localStorage.setItem('bioz_hiddenCards', JSON.stringify(next));
@@ -163,22 +163,43 @@ function Dashboard({ healthLogs, stravaLogs }) {
   };
   const isCardVisible = (cardId) => !hiddenCards.includes(cardId);
 
-  const DASHBOARD_CARDS = [
-    { id: 'frequency', label: "Fréquence d'entraînement" },
-    { id: 'volume', label: "Volume d'entraînement" },
-    { id: 'repartition', label: 'Répartition' },
-    { id: 'steps', label: 'Pas par jour' },
-    { id: 'cycling_dist', label: 'Cyclisme — Distance' },
-    { id: 'running_dist', label: 'Running — Distance' },
-    { id: 'endurance_hr', label: 'FC moy. endurance' },
-    { id: 'cycling_dur', label: 'Cyclisme — Durée' },
-    { id: 'running_dur', label: 'Running — Durée' },
-    { id: 'cycling_speed', label: 'Cyclisme — Vit. moy.' },
-    { id: 'running_pace', label: 'Running — Allure moy.' },
-    { id: 'rowing_dist', label: 'Aviron — Distance' },
-    { id: 'rowing_dur', label: 'Aviron — Durée' },
-    { id: 'rowing_hr', label: 'Aviron — FC moy.' },
-  ];
+  const DEFAULT_ORDER = ['frequency', 'volume', 'repartition', 'steps', 'cycling_dist', 'running_dist', 'endurance_hr', 'cycling_dur', 'running_dur', 'cycling_speed', 'running_pace', 'rowing_dist', 'rowing_dur', 'rowing_hr'];
+  const CARD_LABELS = { frequency: "Fréquence d'entraînement", volume: "Volume d'entraînement", repartition: 'Répartition', steps: 'Pas par jour', cycling_dist: 'Cyclisme — Distance', running_dist: 'Running — Distance', endurance_hr: 'FC moy. endurance', cycling_dur: 'Cyclisme — Durée', running_dur: 'Running — Durée', cycling_speed: 'Cyclisme — Vit. moy.', running_pace: 'Running — Allure moy.', rowing_dist: 'Aviron — Distance', rowing_dur: 'Aviron — Durée', rowing_hr: 'Aviron — FC moy.' };
+
+  const [cardOrder, setCardOrder] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('bioz_cardOrder') || 'null');
+      if (saved && Array.isArray(saved)) {
+        const missing = DEFAULT_ORDER.filter(id => !saved.includes(id));
+        return [...saved.filter(id => DEFAULT_ORDER.includes(id)), ...missing];
+      }
+    } catch {}
+    return DEFAULT_ORDER;
+  });
+  const dragCard = useRef(null);
+  const dragOverCard = useRef(null);
+  const [dragId, setDragId] = useState(null);
+
+  const handleDragStart = (id) => { dragCard.current = id; setDragId(id); };
+  const handleDragEnter = (id) => { dragOverCard.current = id; };
+  const handleDragEnd = () => {
+    if (dragCard.current && dragOverCard.current && dragCard.current !== dragOverCard.current) {
+      setCardOrder(prev => {
+        const next = [...prev];
+        const fromIdx = next.indexOf(dragCard.current);
+        const toIdx = next.indexOf(dragOverCard.current);
+        if (fromIdx !== -1 && toIdx !== -1) {
+          next.splice(fromIdx, 1);
+          next.splice(toIdx, 0, dragCard.current);
+        }
+        localStorage.setItem('bioz_cardOrder', JSON.stringify(next));
+        return next;
+      });
+    }
+    dragCard.current = null;
+    dragOverCard.current = null;
+    setDragId(null);
+  };
 
   // FIX PERF: utilisation de useMemo pour éviter le crash CPU sur mobile
   const safeStravaLogs = useMemo(() => Array.isArray(stravaLogs) ? stravaLogs : [], [stravaLogs]);
@@ -323,254 +344,48 @@ function Dashboard({ healthLogs, stravaLogs }) {
         </button>
         {showCardFilter && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {DASHBOARD_CARDS.map(card => (
-              <button key={card.id} onClick={() => toggleCard(card.id)}
-                className={`text-left px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${isCardVisible(card.id) ? 'bg-slate-700/50 border-slate-600 text-slate-200' : 'bg-slate-900/80 border-slate-700 text-slate-500 line-through'}`}>
-                {isCardVisible(card.id) ? '✓' : '✕'} {card.label}
+            {DEFAULT_ORDER.map(id => (
+              <button key={id} onClick={() => toggleCardVisibility(id)}
+                className={`text-left px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${isCardVisible(id) ? 'bg-slate-700/50 border-slate-600 text-slate-200' : 'bg-slate-900/80 border-slate-700 text-slate-500 line-through'}`}>
+                {isCardVisible(id) ? '✓' : '✕'} {CARD_LABELS[id]}
               </button>
             ))}
           </div>
         )}
       </div>
 
-      {isCardVisible('frequency') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
-            <Calendar size={16} className="text-cyan-400"/> Fréquence d'entraînement
-        </h3>
-        <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stravaChartData}>
-                    <defs>
-                        <linearGradient id="cyanGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={1}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-                    <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-                    <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} allowDecimals={false} />
-                    <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} />
-                    <Bar dataKey="count" name="Séances Strava" fill="url(#cyanGradient)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-            </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('volume') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
-            <Activity size={16} className="text-[#fc4c02]"/> Volume d'entraînement (mn)
-        </h3>
-        <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stravaChartData}>
-                    <defs>
-                        <linearGradient id="stravaGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fc4c02" stopOpacity={1}/><stop offset="100%" stopColor="#fc4c02" stopOpacity={0}/></linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-                    <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-                    <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
-                    <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(value) => [`${value} min`, "Durée"]} />
-                    <Bar dataKey="durationMin" name="Durée (min)" fill="url(#stravaGradient)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-            </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('repartition') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
-            <PieChart size={16} className="text-violet-400"/> Répartition
-        </h3>
-        <div className="h-56 flex items-center justify-center">
-            {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Tooltip contentStyle={DARK_TOOLTIP_STYLE} itemStyle={{color: '#fff'}} />
-                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">
-                            {pieData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} style={{ filter: 'drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.4))' }} />
-                            ))}
-                        </Pie>
-                        <Legend wrapperStyle={{ fontSize: 10 }} />
-                    </PieChart>
-                </ResponsiveContainer>
-            ) : (
-                <div className="text-slate-500 text-sm">Aucune donnée sur cette période.</div>
-            )}
-        </div>
-      </div>}
-
-      {isCardVisible('steps') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg md:col-span-2 xl:col-span-1">
-          <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-emerald-400"/> Pas par jour</h3>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stepsData}>
-                <defs><linearGradient id="emeraldGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={1}/><stop offset="100%" stopColor="#10b981" stopOpacity={0}/></linearGradient></defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-                <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-                <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
-                <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} />
-                <Bar dataKey="total" fill="url(#emeraldGradient)" radius={[4, 4, 0, 0]} name="Pas" />
-              </BarChart>
-            </ResponsiveContainer>
+      {cardOrder.filter(id => isCardVisible(id)).map(id => {
+        const cardContent = {
+          frequency: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Calendar size={16} className="text-cyan-400"/> Fréquence d'entraînement</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={stravaChartData}><defs><linearGradient id="cyanGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={1}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} allowDecimals={false} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} /><Bar dataKey="count" name="Séances" fill="url(#cyanGradient)" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div></>,
+          volume: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Activity size={16} className="text-[#fc4c02]"/> Volume d'entraînement (mn)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={stravaChartData}><defs><linearGradient id="stravaGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fc4c02" stopOpacity={1}/><stop offset="100%" stopColor="#fc4c02" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(value) => [`${value} min`, "Durée"]} /><Bar dataKey="durationMin" name="Durée (min)" fill="url(#stravaGradient)" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div></>,
+          repartition: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><PieChart size={16} className="text-violet-400"/> Répartition</h3><div className="h-56 flex items-center justify-center">{pieData.length > 0 ? (<ResponsiveContainer width="100%" height="100%"><PieChart><Tooltip contentStyle={DARK_TOOLTIP_STYLE} itemStyle={{color: '#fff'}} /><Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">{pieData.map((entry, index) => (<Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} style={{ filter: 'drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.4))' }} />))}</Pie><Legend wrapperStyle={{ fontSize: 10 }} /></PieChart></ResponsiveContainer>) : (<div className="text-slate-500 text-sm">Aucune donnée sur cette période.</div>)}</div></>,
+          steps: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-emerald-400"/> Pas par jour</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={stepsData}><defs><linearGradient id="emeraldGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity={1}/><stop offset="100%" stopColor="#10b981" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} /><Bar dataKey="total" fill="url(#emeraldGradient)" radius={[4, 4, 0, 0]} name="Pas" /></BarChart></ResponsiveContainer></div></>,
+          cycling_dist: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Bike size={16} className="text-blue-400"/> Cyclisme — Distance (km)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={cyclingDistData}><defs><linearGradient id="bikeDistGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={1}/><stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km`, 'Distance']} /><Bar dataKey="distance" fill="url(#bikeDistGrad)" radius={[4, 4, 0, 0]} name="Distance (km)" /></BarChart></ResponsiveContainer></div></>,
+          running_dist: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-orange-400"/> Running — Distance (km)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={runningDistData}><defs><linearGradient id="runDistGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f97316" stopOpacity={1}/><stop offset="100%" stopColor="#f97316" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km`, 'Distance']} /><Bar dataKey="distance" fill="url(#runDistGrad)" radius={[4, 4, 0, 0]} name="Distance (km)" /></BarChart></ResponsiveContainer></div></>,
+          endurance_hr: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Heart size={16} className="text-red-400"/> FC moy. endurance (bpm)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={enduranceHRData}><defs><linearGradient id="hrEndGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={1}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} bpm`, 'FC moy.']} /><Bar dataKey="hr" fill="url(#hrEndGrad)" radius={[4, 4, 0, 0]} name="FC moy. (bpm)" /></BarChart></ResponsiveContainer></div></>,
+          cycling_dur: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-blue-400"/> Cyclisme — Durée (min)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={cyclingDurData}><defs><linearGradient id="bikeDurGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#60a5fa" stopOpacity={1}/><stop offset="100%" stopColor="#60a5fa" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min`, 'Durée']} /><Bar dataKey="duration" fill="url(#bikeDurGrad)" radius={[4, 4, 0, 0]} name="Durée (min)" /></BarChart></ResponsiveContainer></div></>,
+          running_dur: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-orange-400"/> Running — Durée (min)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={runningDurData}><defs><linearGradient id="runDurGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fb923c" stopOpacity={1}/><stop offset="100%" stopColor="#fb923c" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min`, 'Durée']} /><Bar dataKey="duration" fill="url(#runDurGrad)" radius={[4, 4, 0, 0]} name="Durée (min)" /></BarChart></ResponsiveContainer></div></>,
+          cycling_speed: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Bike size={16} className="text-blue-400"/> Cyclisme — Vit. moy. (km/h)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={cyclingSpeedData}><defs><linearGradient id="bikeSpdGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={1}/><stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km/h`, 'Vit. moy.']} /><Bar dataKey="speed" fill="url(#bikeSpdGrad)" radius={[4, 4, 0, 0]} name="Vit. moy. (km/h)" /></BarChart></ResponsiveContainer></div></>,
+          running_pace: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-orange-400"/> Running — Allure moy. (min/km)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><AreaChart data={runningPaceData}><defs><linearGradient id="runPaceGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f97316" stopOpacity={0.6}/><stop offset="100%" stopColor="#f97316" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} reversed /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min/km`, 'Allure']} /><Area type="monotone" dataKey="pace" stroke="#f97316" fill="url(#runPaceGrad)" strokeWidth={2} name="Allure (min/km)" dot={false} connectNulls /></AreaChart></ResponsiveContainer></div></>,
+          rowing_dist: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Waves size={16} className="text-cyan-400"/> Aviron — Distance (km)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={rowingDistData}><defs><linearGradient id="rowDistGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={1}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km`, 'Distance']} /><Bar dataKey="distance" fill="url(#rowDistGrad)" radius={[4, 4, 0, 0]} name="Distance (km)" /></BarChart></ResponsiveContainer></div></>,
+          rowing_dur: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-cyan-400"/> Aviron — Durée (min)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={rowingDurData}><defs><linearGradient id="rowDurGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22d3ee" stopOpacity={1}/><stop offset="100%" stopColor="#22d3ee" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min`, 'Durée']} /><Bar dataKey="duration" fill="url(#rowDurGrad)" radius={[4, 4, 0, 0]} name="Durée (min)" /></BarChart></ResponsiveContainer></div></>,
+          rowing_hr: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Heart size={16} className="text-cyan-400"/> Aviron — FC moy. (bpm)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={rowingHRData}><defs><linearGradient id="rowHRGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={1}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} bpm`, 'FC moy.']} /><Bar dataKey="hr" fill="url(#rowHRGrad)" radius={[4, 4, 0, 0]} name="FC moy. (bpm)" /></BarChart></ResponsiveContainer></div></>,
+        }[id];
+        if (!cardContent) return null;
+        return (
+          <div key={id}
+            className={`bg-slate-800 p-4 rounded-xl border shadow-lg transition-all ${dragId === id ? 'border-violet-500 opacity-50 scale-95' : 'border-slate-700'}`}
+            draggable={!isMobile}
+            onDragStart={() => handleDragStart(id)}
+            onDragEnter={() => handleDragEnter(id)}
+            onDragOver={(e) => e.preventDefault()}
+            onDragEnd={handleDragEnd}
+            style={!isMobile ? { cursor: 'grab' } : {}}
+          >
+            {cardContent}
           </div>
-      </div>}
-
-      {isCardVisible('cycling_dist') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Bike size={16} className="text-blue-400"/> Cyclisme — Distance (km)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={cyclingDistData}>
-              <defs><linearGradient id="bikeDistGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={1}/><stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km`, 'Distance']} />
-              <Bar dataKey="distance" fill="url(#bikeDistGrad)" radius={[4, 4, 0, 0]} name="Distance (km)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('running_dist') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-orange-400"/> Running — Distance (km)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={runningDistData}>
-              <defs><linearGradient id="runDistGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f97316" stopOpacity={1}/><stop offset="100%" stopColor="#f97316" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km`, 'Distance']} />
-              <Bar dataKey="distance" fill="url(#runDistGrad)" radius={[4, 4, 0, 0]} name="Distance (km)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('endurance_hr') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Heart size={16} className="text-red-400"/> FC moy. endurance (bpm)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={enduranceHRData}>
-              <defs><linearGradient id="hrEndGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={1}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} bpm`, 'FC moy.']} />
-              <Bar dataKey="hr" fill="url(#hrEndGrad)" radius={[4, 4, 0, 0]} name="FC moy. (bpm)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('cycling_dur') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-blue-400"/> Cyclisme — Durée (min)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={cyclingDurData}>
-              <defs><linearGradient id="bikeDurGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#60a5fa" stopOpacity={1}/><stop offset="100%" stopColor="#60a5fa" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min`, 'Durée']} />
-              <Bar dataKey="duration" fill="url(#bikeDurGrad)" radius={[4, 4, 0, 0]} name="Durée (min)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('running_dur') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-orange-400"/> Running — Durée (min)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={runningDurData}>
-              <defs><linearGradient id="runDurGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fb923c" stopOpacity={1}/><stop offset="100%" stopColor="#fb923c" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min`, 'Durée']} />
-              <Bar dataKey="duration" fill="url(#runDurGrad)" radius={[4, 4, 0, 0]} name="Durée (min)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('cycling_speed') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Bike size={16} className="text-blue-400"/> Cyclisme — Vit. moy. (km/h)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={cyclingSpeedData}>
-              <defs><linearGradient id="bikeSpdGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={1}/><stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km/h`, 'Vit. moy.']} />
-              <Bar dataKey="speed" fill="url(#bikeSpdGrad)" radius={[4, 4, 0, 0]} name="Vit. moy. (km/h)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('running_pace') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-orange-400"/> Running — Allure moy. (min/km)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={runningPaceData}>
-              <defs><linearGradient id="runPaceGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f97316" stopOpacity={0.6}/><stop offset="100%" stopColor="#f97316" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} reversed />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min/km`, 'Allure']} />
-              <Area type="monotone" dataKey="pace" stroke="#f97316" fill="url(#runPaceGrad)" strokeWidth={2} name="Allure (min/km)" dot={false} connectNulls />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('rowing_dist') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Waves size={16} className="text-cyan-400"/> Aviron — Distance (km)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={rowingDistData}>
-              <defs><linearGradient id="rowDistGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={1}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km`, 'Distance']} />
-              <Bar dataKey="distance" fill="url(#rowDistGrad)" radius={[4, 4, 0, 0]} name="Distance (km)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('rowing_dur') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-cyan-400"/> Aviron — Durée (min)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={rowingDurData}>
-              <defs><linearGradient id="rowDurGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22d3ee" stopOpacity={1}/><stop offset="100%" stopColor="#22d3ee" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min`, 'Durée']} />
-              <Bar dataKey="duration" fill="url(#rowDurGrad)" radius={[4, 4, 0, 0]} name="Durée (min)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
-
-      {isCardVisible('rowing_hr') && <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
-        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Heart size={16} className="text-cyan-400"/> Aviron — FC moy. (bpm)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={rowingHRData}>
-              <defs><linearGradient id="rowHRGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={1}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
-              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} />
-              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} bpm`, 'FC moy.']} />
-              <Bar dataKey="hr" fill="url(#rowHRGrad)" radius={[4, 4, 0, 0]} name="FC moy. (bpm)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>}
+        );
+      })}
     </div>
   );
 }

@@ -222,9 +222,45 @@ function Dashboard({ healthLogs, stravaLogs }) {
     return Object.keys(raw).map(key => ({ name: key, value: raw[key] }));
   }, [filteredStravaLogs]);
   
-  const stepsData = useMemo(() => aggregateData(healthLogs.filter(l => new Date(l.date) >= new Date(startDate)), (acc, log) => { 
-      if (log.steps > 0) acc.total = (acc.total || 0) + (log.steps || 0); 
+  const stepsData = useMemo(() => aggregateData(healthLogs.filter(l => new Date(l.date) >= new Date(startDate)), (acc, log) => {
+      if (log.steps > 0) acc.total = (acc.total || 0) + (log.steps || 0);
   }, { total: 0 }), [healthLogs, startDate, endDate, timeFrame]);
+
+  // --- Données endurance par type ---
+  const cyclingTypes = ['Ride', 'VirtualRide', 'EBikeRide'];
+  const runningTypes = ['Run'];
+
+  const cyclingMapped = useMemo(() => filteredStravaLogs.filter(a => cyclingTypes.includes(a.type)).map(l => ({ ...l, date: l.start_date })), [filteredStravaLogs]);
+  const runningMapped = useMemo(() => filteredStravaLogs.filter(a => runningTypes.includes(a.type)).map(l => ({ ...l, date: l.start_date })), [filteredStravaLogs]);
+  const enduranceMapped = useMemo(() => filteredStravaLogs.filter(a => [...cyclingTypes, ...runningTypes].includes(a.type)).map(l => ({ ...l, date: l.start_date })), [filteredStravaLogs]);
+
+  const cyclingDistData = useMemo(() => aggregateData(cyclingMapped, (acc, log) => {
+    acc.distance = (acc.distance || 0) + ((log.distance || 0) / 1000);
+  }, { distance: 0 }).map(d => ({ ...d, distance: parseFloat(d.distance.toFixed(1)) || null })), [cyclingMapped, timeFrame, startDate, endDate]);
+
+  const runningDistData = useMemo(() => aggregateData(runningMapped, (acc, log) => {
+    acc.distance = (acc.distance || 0) + ((log.distance || 0) / 1000);
+  }, { distance: 0 }).map(d => ({ ...d, distance: parseFloat(d.distance.toFixed(1)) || null })), [runningMapped, timeFrame, startDate, endDate]);
+
+  const cyclingDurData = useMemo(() => aggregateData(cyclingMapped, (acc, log) => {
+    acc.duration = (acc.duration || 0) + ((log.moving_time || 0) / 60);
+  }, { duration: 0 }).map(d => ({ ...d, duration: Math.round(d.duration) || null })), [cyclingMapped, timeFrame, startDate, endDate]);
+
+  const runningDurData = useMemo(() => aggregateData(runningMapped, (acc, log) => {
+    acc.duration = (acc.duration || 0) + ((log.moving_time || 0) / 60);
+  }, { duration: 0 }).map(d => ({ ...d, duration: Math.round(d.duration) || null })), [runningMapped, timeFrame, startDate, endDate]);
+
+  const cyclingSpeedData = useMemo(() => aggregateData(cyclingMapped, (acc, log) => {
+    if (log.average_speed) { acc._speeds = acc._speeds || []; acc._speeds.push(log.average_speed); }
+  }, {}).map(d => ({ ...d, speed: d._speeds && d._speeds.length > 0 ? parseFloat((d._speeds.reduce((a, b) => a + b, 0) / d._speeds.length * 3.6).toFixed(1)) : null })), [cyclingMapped, timeFrame, startDate, endDate]);
+
+  const runningPaceData = useMemo(() => aggregateData(runningMapped, (acc, log) => {
+    if (log.average_speed) { acc._speeds = acc._speeds || []; acc._speeds.push(log.average_speed); }
+  }, {}).map(d => ({ ...d, pace: d._speeds && d._speeds.length > 0 ? parseFloat((1000 / (d._speeds.reduce((a, b) => a + b, 0) / d._speeds.length) / 60).toFixed(2)) : null })), [runningMapped, timeFrame, startDate, endDate]);
+
+  const enduranceHRData = useMemo(() => aggregateData(enduranceMapped, (acc, log) => {
+    if (log.average_heartrate) { acc._hrs = acc._hrs || []; acc._hrs.push(log.average_heartrate); }
+  }, {}).map(d => ({ ...d, hr: d._hrs && d._hrs.length > 0 ? Math.round(d._hrs.reduce((a, b) => a + b, 0) / d._hrs.length) : null })), [enduranceMapped, timeFrame, startDate, endDate]);
 
   const chartTheme = { background: '#1e293b', grid: '#334155', text: '#94a3b8' };
 
@@ -318,6 +354,119 @@ function Dashboard({ healthLogs, stravaLogs }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
+      </div>
+
+      {/* --- CARTES ENDURANCE --- */}
+      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Bike size={16} className="text-blue-400"/> Cyclisme — Distance (km)</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={cyclingDistData}>
+              <defs><linearGradient id="bikeDistGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={1}/><stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
+              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
+              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km`, 'Distance']} />
+              <Bar dataKey="distance" fill="url(#bikeDistGrad)" radius={[4, 4, 0, 0]} name="Distance (km)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-orange-400"/> Running — Distance (km)</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={runningDistData}>
+              <defs><linearGradient id="runDistGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f97316" stopOpacity={1}/><stop offset="100%" stopColor="#f97316" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
+              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
+              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km`, 'Distance']} />
+              <Bar dataKey="distance" fill="url(#runDistGrad)" radius={[4, 4, 0, 0]} name="Distance (km)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Heart size={16} className="text-red-400"/> FC moy. endurance (bpm)</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={enduranceHRData}>
+              <defs><linearGradient id="hrEndGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={0.6}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
+              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} />
+              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} bpm`, 'FC moy.']} />
+              <Area type="monotone" dataKey="hr" stroke="#ef4444" fill="url(#hrEndGrad)" strokeWidth={2} name="FC moy. (bpm)" dot={false} connectNulls />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-blue-400"/> Cyclisme — Durée (min)</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={cyclingDurData}>
+              <defs><linearGradient id="bikeDurGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#60a5fa" stopOpacity={1}/><stop offset="100%" stopColor="#60a5fa" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
+              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
+              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min`, 'Durée']} />
+              <Bar dataKey="duration" fill="url(#bikeDurGrad)" radius={[4, 4, 0, 0]} name="Durée (min)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Clock size={16} className="text-orange-400"/> Running — Durée (min)</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={runningDurData}>
+              <defs><linearGradient id="runDurGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fb923c" stopOpacity={1}/><stop offset="100%" stopColor="#fb923c" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
+              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} />
+              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min`, 'Durée']} />
+              <Bar dataKey="duration" fill="url(#runDurGrad)" radius={[4, 4, 0, 0]} name="Durée (min)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Bike size={16} className="text-blue-400"/> Cyclisme — Vit. moy. (km/h)</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={cyclingSpeedData}>
+              <defs><linearGradient id="bikeSpdGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity={0.6}/><stop offset="100%" stopColor="#3b82f6" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
+              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} />
+              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} km/h`, 'Vit. moy.']} />
+              <Area type="monotone" dataKey="speed" stroke="#3b82f6" fill="url(#bikeSpdGrad)" strokeWidth={2} name="Vit. moy. (km/h)" dot={false} connectNulls />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Footprints size={16} className="text-orange-400"/> Running — Allure moy. (min/km)</h3>
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={runningPaceData}>
+              <defs><linearGradient id="runPaceGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f97316" stopOpacity={0.6}/><stop offset="100%" stopColor="#f97316" stopOpacity={0}/></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} />
+              <YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} reversed />
+              <Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} min/km`, 'Allure']} />
+              <Area type="monotone" dataKey="pace" stroke="#f97316" fill="url(#runPaceGrad)" strokeWidth={2} name="Allure (min/km)" dot={false} connectNulls />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );

@@ -176,30 +176,39 @@ function Dashboard({ healthLogs, stravaLogs }) {
     } catch {}
     return DEFAULT_ORDER;
   });
-  const dragCard = useRef(null);
-  const dragOverCard = useRef(null);
   const [dragId, setDragId] = useState(null);
+  const [dropTargetId, setDropTargetId] = useState(null);
 
-  const handleDragStart = (id) => { dragCard.current = id; setDragId(id); };
-  const handleDragEnter = (id) => { dragOverCard.current = id; };
-  const handleDragEnd = () => {
-    if (dragCard.current && dragOverCard.current && dragCard.current !== dragOverCard.current) {
+  const handleDragStart = (e, id) => {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+  };
+  const handleDragOver = (e, id) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (id !== dragId) setDropTargetId(id);
+  };
+  const handleDrop = (e, targetId) => {
+    e.preventDefault();
+    const sourceId = e.dataTransfer.getData('text/plain');
+    if (sourceId && targetId && sourceId !== targetId) {
       setCardOrder(prev => {
         const next = [...prev];
-        const fromIdx = next.indexOf(dragCard.current);
-        const toIdx = next.indexOf(dragOverCard.current);
+        const fromIdx = next.indexOf(sourceId);
+        const toIdx = next.indexOf(targetId);
         if (fromIdx !== -1 && toIdx !== -1) {
           next.splice(fromIdx, 1);
-          next.splice(toIdx, 0, dragCard.current);
+          next.splice(toIdx, 0, sourceId);
         }
         localStorage.setItem('bioz_cardOrder', JSON.stringify(next));
         return next;
       });
     }
-    dragCard.current = null;
-    dragOverCard.current = null;
     setDragId(null);
+    setDropTargetId(null);
   };
+  const handleDragEnd = () => { setDragId(null); setDropTargetId(null); };
 
   // FIX PERF: utilisation de useMemo pour éviter le crash CPU sur mobile
   const safeStravaLogs = useMemo(() => Array.isArray(stravaLogs) ? stravaLogs : [], [stravaLogs]);
@@ -372,17 +381,22 @@ function Dashboard({ healthLogs, stravaLogs }) {
           rowing_hr: <><h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2"><Heart size={16} className="text-cyan-400"/> Aviron — FC moy. (bpm)</h3><div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={rowingHRData}><defs><linearGradient id="rowHRGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity={1}/><stop offset="100%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} /><XAxis dataKey="date" tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} padding={{ left: 10, right: 30 }} /><YAxis tick={{fill: chartTheme.text, fontSize: 10}} axisLine={{stroke: chartTheme.grid}} domain={['auto', 'auto']} /><Tooltip contentStyle={DARK_TOOLTIP_STYLE} cursor={{fill: '#334155', opacity: 0.4}} formatter={(v) => [`${v} bpm`, 'FC moy.']} /><Bar dataKey="hr" fill="url(#rowHRGrad)" radius={[4, 4, 0, 0]} name="FC moy. (bpm)" /></BarChart></ResponsiveContainer></div></>,
         }[id];
         if (!cardContent) return null;
+        const isDragging = dragId === id;
+        const isDropTarget = dropTargetId === id && dragId !== id;
         return (
           <div key={id}
-            className={`bg-slate-800 p-4 rounded-xl border shadow-lg transition-all ${dragId === id ? 'border-violet-500 opacity-50 scale-95' : 'border-slate-700'}`}
+            className={`bg-slate-800 p-4 rounded-xl border-2 shadow-lg transition-all duration-150 ${isDragging ? 'border-violet-500 opacity-40 scale-95' : isDropTarget ? 'border-violet-400 ring-2 ring-violet-400/30 scale-[1.02]' : 'border-slate-700'}`}
             draggable={!isMobile}
-            onDragStart={() => handleDragStart(id)}
-            onDragEnter={() => handleDragEnter(id)}
-            onDragOver={(e) => e.preventDefault()}
+            onDragStart={(e) => handleDragStart(e, id)}
+            onDragOver={(e) => handleDragOver(e, id)}
+            onDrop={(e) => handleDrop(e, id)}
             onDragEnd={handleDragEnd}
-            style={!isMobile ? { cursor: 'grab' } : {}}
+            onDragLeave={() => { if (dropTargetId === id) setDropTargetId(null); }}
+            style={!isMobile ? { cursor: isDragging ? 'grabbing' : 'grab' } : {}}
           >
-            {cardContent}
+            <div style={isDragging ? { pointerEvents: 'none' } : {}}>
+              {cardContent}
+            </div>
           </div>
         );
       })}

@@ -14,12 +14,12 @@ pour offrir une vue unifiée de la condition physique.
 
 ### Fonctionnalités
 
-- 📊 Suivi du poids, composition corporelle et métriques santé (Withings)
-- 🏃 Analyse des activités sportives et performances (Strava)
-- 💪 Suivi des séances de musculation et progression (Hevy)
-- 🔐 Authentification sécurisée via Google OAuth
-- 💾 Persistance des données avec Firebase Firestore
-- 📱 Interface responsive desktop et mobile
+- Suivi du poids, composition corporelle et métriques santé (Withings)
+- Analyse des activités sportives et performances (Strava)
+- Suivi des séances de musculation et progression (Hevy)
+- Authentification sécurisée via Google OAuth
+- Persistance des données avec Firebase Firestore
+- Interface responsive desktop et mobile
 
 ### Stack technique
 
@@ -41,12 +41,12 @@ with vibe coding using Claude Code.
 
 ### Features
 
-- 📊 Weight, body composition and health metrics tracking (Withings)
-- 🏃 Sports activity analysis and performance tracking (Strava)
-- 💪 Workout session tracking and progression (Hevy)
-- 🔐 Secure authentication via Google OAuth
-- 💾 Data persistence with Firebase Firestore
-- 📱 Responsive design for desktop and mobile
+- Weight, body composition and health metrics tracking (Withings)
+- Sports activity analysis and performance tracking (Strava)
+- Workout session tracking and progression (Hevy)
+- Secure authentication via Google OAuth
+- Data persistence with Firebase Firestore
+- Responsive design for desktop and mobile
 
 ### Tech Stack
 
